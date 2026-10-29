@@ -701,6 +701,7 @@ pub fn autostart() -> fastframe_autostart::Autostart {
 }
 
 pub enum Command {
+    Soloist(crate::soloist::Request),
     OpenThemesFolder,
     /// Read or change the login registration, off the UI thread: it reads
     /// and writes a file, the registry or D-Bus, and the Flatpak portal may
@@ -965,6 +966,7 @@ pub struct LyricsRequest {
 }
 
 pub enum Event {
+    Soloist(crate::soloist::Status),
     /// The folder picked in the local files dialog; `None` when cancelled.
     LocalFilesFolderChosen(Option<std::path::PathBuf>),
     /// The songs in `folder`, by the `spotify:local:` URIs they play for.
@@ -2137,6 +2139,13 @@ impl Worker {
     }
 
     async fn run(&mut self, mut commands: mpsc::UnboundedReceiver<Command>) {
+        let soloist = crate::soloist::Controller::spawn(
+            self.dirs.clone(),
+            self.http.clone(),
+            self.credentials.clone(),
+            self.events.clone(),
+            self.waker.clone(),
+        );
         let (cache_writes, cache_write_receiver) = mpsc::channel(1);
         let cache_writer = tokio::spawn(store_playlist_caches(
             cache_write_receiver,
@@ -2159,6 +2168,7 @@ impl Worker {
                 continue;
             }
             match command {
+                Command::Soloist(request) => soloist.send(request),
                 Command::ListOutputDevices => {
                     let events = self.events.clone();
                     let waker = self.waker.clone();
@@ -2290,7 +2300,10 @@ impl Worker {
                         waker.wake();
                     });
                 }
-                Command::Shutdown => break,
+                Command::Shutdown => {
+                    soloist.shutdown().await;
+                    break;
+                }
                 Command::SignIn {
                     request,
                     config,
@@ -2313,6 +2326,7 @@ impl Worker {
                     self.pending_authorization = None;
                 }
                 Command::SignOut => {
+                    soloist.send(crate::soloist::Request::ForgetSession);
                     self.sign_out();
                     // The account caches go in command order, so nothing a
                     // sign-in after this stores goes with them. This loop
@@ -2970,7 +2984,7 @@ impl Worker {
                     }
                 }
             }
-            None | Some(StoredGrant::Proxy(_)) => {}
+            None | Some(StoredGrant::Proxy(_) | StoredGrant::Soloist(_)) => {}
         }
         if slot == CredentialSlot::Playback {
             self.start_prerelease();

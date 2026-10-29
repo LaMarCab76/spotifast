@@ -31,6 +31,14 @@ The interface includes complete
 **Playback needs Spotify Premium.** Free accounts can browse and search, but
 cannot play music through Spotifast.
 
+**Optional official audio engine:** Settings → **Playback engine** can select
+Spotify Soloist instead of librespot. Download it from the same section, save
+your own Soloist API key in the system credential store, and pair it once from
+Spotify's app on the same local network. Soloist runs as a separate process;
+the memory figures above describe the original librespot path.
+The equalizer, visualizers, local files and advanced local queue edits remain
+librespot features. See [Soloist setup](docs/_reference/how-it-connects.md#spotify-soloist).
+
 ![Spotifast Home with the playlist library, recommendations, queue, and player visible](docs/screenshot.png)
 
 <details>
@@ -46,9 +54,9 @@ https://github.com/user-attachments/assets/a5f669ce-b3b7-4f8e-9933-976a78876c7e
 
 | Feature | What you can do |
 |---|---|
-| **Library and search** | Browse playlists, Liked Songs, albums, artists, and podcasts. Search the catalogue and edit playlists you own. |
+| **Library and search** | Browse playlists, Liked Songs, albums, artists, and podcasts. Folder levels are indented in normal and compact library lists. Search the catalogue and edit playlists you own. |
 | **Local files** | Play the local files your playlists list from a folder you choose in Settings, at any sample rate. Names show spaces and accents correctly, including in cached playlists. |
-| **Spotify Connect** | Play on this computer or control playback on your other devices, including Google Cast speakers and groups. Cast devices appear as they are discovered; frequently and recently chosen outputs rise to the top. Remote volume keeps your chosen level while Spotify updates. |
+| **Spotify Connect** | Play on this computer or control playback on your other devices, including Google Cast speakers and groups. The playing device's name appears beside the device button in the player bar only when listening elsewhere. Cast devices appear as they are discovered; frequently and recently chosen outputs rise to the top. Remote volume keeps your chosen level while Spotify updates. |
 | **Queue** | Add songs to the queue, or choose **Play next** to put a song or selection first when playing on this computer. |
 | **Themes** | Choose light, dark, system appearance, or custom colours, with one theme for light mode and one for dark mode that switch with the system. On Omarchy, follow your desktop theme. |
 | **Desktop controls** | Use keyboard shortcuts and media keys. Keep music playing from the tray when supported by your desktop and settings, and start Spotifast with your computer, with its window or in the tray. |

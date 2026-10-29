@@ -1109,6 +1109,10 @@ pub struct Toast {
 /// Actions emitted while drawing and applied afterward to avoid borrow conflicts.
 #[derive(Clone, Debug)]
 pub enum Action {
+    SetPlaybackEngine(crate::soloist::PlaybackEngine),
+    InstallSoloist,
+    SaveSoloistKey(crate::soloist::ApiKey),
+    RestartSoloist,
     Open(Page),
     /// Opens the radio of a song shown in a list, after caching the row's
     /// song so the page has its name and cover (#644).

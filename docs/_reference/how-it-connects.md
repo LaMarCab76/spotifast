@@ -4,6 +4,65 @@ description: Independent Spotify grants, what is stored, and how API traffic is 
 nav_order: 1
 ---
 
+## Spotify Soloist
+
+Settings **Playback engine** chooses between the existing librespot player and
+Spotify's official Soloist receiver. Soloist is downloaded on request from
+Spotify's CDN, never bundled. Spotify publishes it for Apple Silicon macOS 13
+or newer, Windows x64, and supported Linux architectures. The download is
+limited to 64 MiB; only the expected executable is extracted. macOS verifies
+Spotify's signature and Windows verifies its Authenticode signature before
+the executable runs.
+
+Generate your own Premium account's key at
+[Spotify for Developers](https://developer.spotify.com/dashboard/soloist).
+Save it in Settings, then select **Spotify Soloist**. The key uses a separate
+entry in the system credential store and is never saved in settings or logs.
+Spotify's command-line interface requires passing the key in the child
+process's arguments, so other software running as your user may inspect it.
+It is independent of the Web API Client ID and librespot authorization.
+
+Pair once by opening Spotify on a phone or computer on the same local network,
+with the same account, and selecting the device name Settings shows. Allow
+Spotify local-network access if the operating system asks. Pairing is only
+complete when Soloist reports an authenticated session. While setup is
+incomplete, play requests never fall back to some other active device.
+
+Spotifast keeps its librespot session for metadata and library requests.
+Playback controls and the queue use the existing external Spotify Connect
+route, including its Web API rate limits and queue restrictions. Soloist's
+event observer connects only to its loopback WebSocket endpoint. Neither the
+API key nor librespot credentials are sent to that endpoint. The official
+Spotify app can be closed after pairing; continued playback still needs the
+Spotify network services.
+
+Soloist is shown as playback on this computer. Only playback on another
+device shows that device's name beside the device button in the player bar;
+the top bar does not repeat it. Long names are shortened to keep the controls
+available, with the full name in the tooltip.
+
+Spotifast's proxy configuration covers the download and existing Web API
+controls. It is not passed to Soloist, which manages its own Spotify network
+connections.
+
+Soloist outputs to the system audio device. Spotifast's equalizer,
+normalization, quality, autoplay, gapless, local-file and visualization
+settings control librespot only. Its visualizers cannot see Soloist audio.
+Inserting, moving, clearing or removing individual queue occurrences remains
+limited to the local librespot engine.
+
+The receiver and observer stop when Spotifast quits completely. Closing a
+window to the menu bar or tray keeps playback available. Session state lives
+under `soloist-session` in the state directory, the program under
+`soloist-program`, and the bounded 512 MiB audio cache under `soloist` in the
+cache directory. Signing out stops Soloist and removes its paired session.
+Its API key is kept independently so it can be reused after signing in again.
+
+Builds expire 90 days after compilation. Settings displays the remaining
+days. Select librespot to stop Soloist, then use **Download / update** to
+install a newer official build while keeping the pairing. Updates are
+requested explicitly and never interrupt playback.
+
 ## Independent grants, once each
 
 Spotifast uses separate credentials for Web API access and local playback:

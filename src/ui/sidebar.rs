@@ -11,6 +11,7 @@ use crate::theme::{self, Icon, Palette};
 
 const DEFAULT_ROW_HEIGHT: f32 = 60.0;
 const COMPACT_ROW_HEIGHT: f32 = 32.0;
+const FOLDER_INDENT: f32 = 28.0;
 
 struct Entry {
     image: Option<String>,
@@ -1467,7 +1468,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                     } else {
                         palette.text
                     };
-                    let indent = f32::from(entry.depth) * 14.0;
+                    let indent = f32::from(entry.depth) * FOLDER_INDENT;
                     if let Some((_, collapsed, _)) = &entry.folder {
                         let chevron = if *collapsed {
                             Icon::ChevronRight

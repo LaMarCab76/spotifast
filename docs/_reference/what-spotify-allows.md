@@ -198,6 +198,16 @@ audio key, nothing in Spotifast can fix it; see
 [Spotify refused the audio key](/troubleshooting/#audio-key). The patches are listed in
 `Cargo.toml` and dropped as librespot merges them.
 
+## Optional official Soloist receiver
+
+Soloist can handle audio while Spotifast keeps its interface, librespot
+metadata session and Web API. It is installed separately from Spotify's
+servers, needs a personal Soloist API key and one-time Connect pairing, and
+its builds expire after 90 days. It provides no audio tap for the equalizer
+or visualizers. Spotifast uses its existing external-device control path,
+so the local queue-editing features remain specific to librespot.
+See [Soloist setup](/how-it-connects/#spotify-soloist).
+
 ## Not available
 
 The Web API and librespot do not provide these features:
@@ -222,13 +232,7 @@ The Web API and librespot do not provide these features:
 - **Lossless audio.** librespot does not receive lossless streams. Spotifast
   will reconsider this if librespot gains lawful support, but it will not
   bypass Spotify's DRM.
-- **Soloist as the player.** Spotify's Soloist plays lossless and works with
-  Spotify Connect, but Spotify ships it only for Linux and does not allow apps
-  to bundle it. Each listener would need their own developer key and pairing,
-  builds stop working after 90 days, and it has no API for the library,
-  playlists or search, and no way to feed the equalizer and visualisers.
-  Spotifast will reconsider it if Spotify offers a supported desktop path.
-  See [issue #965](https://github.com/crmne/spotifast/issues/965).
+
 - **Local files from Spotify's Local Files playlist.** librespot cannot play
   that playlist; add the songs to another playlist first. Local files on other
   computers or phones are not shared either: Spotify keeps only their names.

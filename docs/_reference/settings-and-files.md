@@ -4,6 +4,9 @@ description: Configuration, credential and cache locations, and what is safe to 
 nav_order: 0
 ---
 
+The Settings search field and sections fill the available page width. On narrow
+windows, controls move below their descriptions when needed.
+
 ## Where things live
 
 Linux media controls use `playerctl --player=spotifast`.
@@ -684,3 +687,12 @@ For a manual installation, remove only
 Packaged launches recreate missing integration files. To disable the hook
 while keeping the package installed, leave that hook file empty instead;
 existing user files are preserved. Selecting Dark or Light is sufficient to stop following Omarchy's colors.
+
+## Optional Soloist files
+
+The `playback_engine` setting is `librespot` by default, or `soloist` after
+selection in Settings. Older settings retain librespot. A personal Soloist
+API key is stored in the system credential store, never in settings.json.
+The state directory holds `soloist-program` and `soloist-session`. The cache
+directory holds Soloist's own cache, limited to 512 MiB.
+See [Soloist setup](/how-it-connects/#spotify-soloist).

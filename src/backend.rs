@@ -1144,6 +1144,8 @@ pub enum LocalPlayback {
     Connecting,
     /// Network path is unavailable; reconnection suspended pending reachability.
     WaitingForNetwork,
+    /// Streaming reads are ready without a local Connect player.
+    MetadataReady,
     /// This computer is a ready Spotify Connect device.
     Ready {
         device_id: String,
@@ -1869,6 +1871,7 @@ struct Worker {
     /// True while a playback grant or engine connection is in flight, so a
     /// second attempt does not pile up.
     engine_busy: bool,
+    engine_connect_task: Option<tokio::task::AbortHandle>,
     search_tasks: Vec<tokio::task::AbortHandle>,
     /// A user changed engine-affecting settings while the current connection
     /// attempt was in flight. Its result is stale and must not be installed.
@@ -1978,6 +1981,7 @@ impl Worker {
             radio_waiting: BTreeMap::new(),
             prerelease_waiting: None,
             engine_busy: false,
+            engine_connect_task: None,
             search_tasks: Vec::new(),
             engine_restart_pending: false,
             signed_in: false,
@@ -2343,11 +2347,33 @@ impl Worker {
                 }
                 Command::AuthorizePlayback => self.authorize_playback(),
                 Command::RestartEngine(mut config) => {
+                    if config.playback != self.engine_config.playback {
+                        if config.playback
+                            && let Err(error) = soloist.stop().await
+                        {
+                            self.emit(Event::Playback(LocalPlayback::Failed(error)));
+                            continue;
+                        }
+                        if let Some(task) = self.engine_connect_task.take() {
+                            task.abort();
+                        }
+                        self.engine_attempt = self.engine_attempt.wrapping_add(1);
+                        self.engine_busy = false;
+                        self.engine_restart_pending = false;
+                        if let Some(engine) = &self.engine {
+                            engine.stop_player().await;
+                        }
+                    }
                     // Audio settings must not revert a proxy change whose UI
                     // acknowledgement was still in flight when this was clicked.
                     config.proxy = self.engine_config.proxy.clone();
                     self.engine_config = config;
                     self.replace_engine();
+                    if !self.engine_config.playback {
+                        self.resume = None;
+                        self.resume_verify = None;
+                        self.heard = None;
+                    }
                 }
                 Command::ApplyProxy { request, config } => self.change_proxy(request, config, None),
                 Command::Player(command) => {
@@ -2360,7 +2386,7 @@ impl Worker {
                         Some(engine)
                             if command == PlayerCommand::Toggle
                                 && engine.carrying()
-                                && engine.keep_player().toggle() => {}
+                                && engine.keep_player().is_some_and(|player| player.toggle()) => {}
                         Some(engine) => {
                             if let Err(error) = engine.command(command) {
                                 self.emit(Event::Error(format!("Playback error: {error}")));
@@ -2537,6 +2563,11 @@ impl Worker {
                     lease,
                     attempt,
                 } => {
+                    if (attempt != self.engine_attempt || !lease.current() || !self.signed_in)
+                        && let Some(engine) = engine.as_ref().as_ref()
+                    {
+                        engine.stop_player().await;
+                    }
                     if lease.current() && self.signed_in {
                         self.on_engine_connected(session_generation, *engine, error, attempt);
                     } else if let Some(engine) = *engine {
@@ -3649,7 +3680,7 @@ impl Worker {
             if !engine.carrying() || self.resume.is_none() {
                 self.resume = engine.resume_point();
             }
-            self.kept_player = Some(engine.keep_player());
+            self.kept_player = engine.keep_player();
         }
     }
 
@@ -3815,7 +3846,7 @@ impl Worker {
         let commands = self.commands.clone();
         let waker = self.waker.clone();
         let session_generation = self.album_type_lookup.session_generation;
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             let cache = match config.open_cache() {
                 Ok(cache) => cache,
                 Err(error) => {
@@ -3868,6 +3899,7 @@ impl Worker {
             let _ = events;
             waker.wake();
         });
+        self.engine_connect_task = Some(task.abort_handle());
     }
 
     fn on_engine_connected(
@@ -3929,12 +3961,13 @@ impl Worker {
                         }
                     });
                 }
+                let playback = engine.has_player();
                 let device_id = engine.device_id().to_string();
                 // The engine plays the kept song on now.
                 self.kept_player = None;
                 let engine = Arc::new(engine);
-                self.heard = Some(engine.heard());
-                if let Some(spec) = self.resume.take() {
+                self.heard = engine.heard();
+                if let Some(spec) = self.resume.take().filter(|_| playback) {
                     // Delay resume until Spirc finishes registering. An early
                     // load can return 400 and leave playback stopped. Verify
                     // the load and retry if needed.
@@ -3944,7 +3977,11 @@ impl Worker {
                 self.engine = Some(engine);
                 self.start_rootlist();
                 self.reconnects.clear();
-                self.emit(Event::Playback(LocalPlayback::Ready { device_id }));
+                self.emit(Event::Playback(if playback {
+                    LocalPlayback::Ready { device_id }
+                } else {
+                    LocalPlayback::MetadataReady
+                }));
                 self.start_album_type_lookup();
                 self.start_audiobook_lookup();
                 self.start_playlist_header_lookup();

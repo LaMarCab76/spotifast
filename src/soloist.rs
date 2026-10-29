@@ -139,6 +139,7 @@ pub enum Request {
     SaveKey(ApiKey),
     Start(String, u8),
     Stop,
+    StopAndWait(tokio::sync::oneshot::Sender<()>),
     ForgetSession,
 }
 
@@ -385,6 +386,17 @@ impl Controller {
         let _ = self.tx.send(request);
     }
 
+    pub async fn stop(&self) -> Result<(), String> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.tx
+            .send(Request::StopAndWait(tx))
+            .map_err(|_| "Soloist controller stopped".to_string())?;
+        tokio::time::timeout(Duration::from_secs(6), rx)
+            .await
+            .map_err(|_| "Soloist did not finish stopping".to_string())?
+            .map_err(|_| "Soloist controller stopped".to_string())
+    }
+
     pub async fn shutdown(self) {
         let Self { tx, mut task } = self;
         let _ = tx.send(Request::Stop);
@@ -499,7 +511,22 @@ async fn run(
         tokio::select! {
             request = requests.recv() => {
                 let Some(request) = request else { break };
+                let request = match request {
+                    Request::StopAndWait(done) => {
+                        let previous = status.clone();
+                        wanted = None;
+                        reader = None;
+                        terminate(&mut trace).await;
+                        stop_receiver(&mut daemon).await;
+                        status.phase = Phase::Stopped;
+                        if status != previous { emit(&status); }
+                        let _ = done.send(());
+                        continue;
+                    }
+                    request => request,
+                };
                 let start = match request {
+                    Request::StopAndWait(_) => unreachable!("handled above"),
                     Request::Stop | Request::ForgetSession => {
                         let previous = status.clone();
                         wanted = None;

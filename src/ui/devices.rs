@@ -91,6 +91,33 @@ fn name_devices(devices: &mut [Device], receivers: &[crate::zeroconf::Receiver])
     }
 }
 
+/// Keep one row for this installation, with the selected engine's actual id.
+/// Device names are labels, never identities: another Mac may use the same name.
+fn computer_outputs(
+    mut devices: Vec<Device>,
+    own_ids: &[String],
+    current: Option<Device>,
+) -> Vec<Device> {
+    let current_id = current.as_ref().and_then(|device| device.id.as_ref());
+    devices.retain(|device| {
+        device
+            .id
+            .as_ref()
+            .is_none_or(|id| !own_ids.contains(id) || Some(id) == current_id)
+    });
+    if let Some(current) = current {
+        if let Some(known) = devices.iter_mut().find(|device| device.id == current.id) {
+            known.name = current.name;
+            known.kind = current.kind;
+        } else {
+            devices.insert(0, current);
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    devices.retain(|device| device.id.as_ref().is_none_or(|id| seen.insert(id.clone())));
+    devices
+}
+
 pub fn device_icon(kind: &str) -> Icon {
     match kind.to_ascii_lowercase().as_str() {
         "computer" => Icon::Laptop,
@@ -110,12 +137,18 @@ pub fn device_icon(kind: &str) -> Icon {
 fn enable_playback_row(app: &mut App, ui: &mut egui::Ui) {
     use egui::{Rect, Sense, Vec2, pos2, vec2};
     let palette = app.palette;
-    let authorizing = matches!(
-        app.local_playback,
-        crate::backend::LocalPlayback::Authorizing
-            | crate::backend::LocalPlayback::Connecting
-            | crate::backend::LocalPlayback::WaitingForNetwork
-    );
+    let soloist = app.settings.playback_engine == crate::soloist::PlaybackEngine::Soloist;
+    let authorizing = (soloist
+        && matches!(
+            app.soloist.phase,
+            crate::soloist::Phase::Preparing | crate::soloist::Phase::Pairing
+        ))
+        || matches!(
+            app.local_playback,
+            crate::backend::LocalPlayback::Authorizing
+                | crate::backend::LocalPlayback::Connecting
+                | crate::backend::LocalPlayback::WaitingForNetwork
+        );
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 52.0), Sense::click());
     if response.hovered() && !authorizing {
         ui.painter()
@@ -159,8 +192,12 @@ fn enable_playback_row(app: &mut App, ui: &mut egui::Ui) {
         );
         theme::spinner(&mut spin, 16.0, palette.accent);
     }
-    if response.clicked() && !authorizing {
-        app.actions.push(Action::EnablePlayback);
+    if response.clicked() && (!authorizing || soloist) {
+        app.actions.push(if soloist {
+            Action::Open(crate::model::Page::Settings)
+        } else {
+            Action::EnablePlayback
+        });
     }
     ui.painter().hline(
         rect.x_range().shrink(6.0),
@@ -420,28 +457,18 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                     });
                 });
                 ui.add_space(4.0);
-                let local_id = app.local_device_id.clone();
-                let mut devices: Vec<Device> = app.devices.clone();
-                if app.local_ready
-                    && let Some(local_id) = &local_id
-                    && !devices
-                        .iter()
-                        .any(|device| device.id.as_deref() == Some(local_id.as_str()))
-                {
-                    devices.insert(
-                        0,
-                        Device {
-                            id: Some(local_id.clone()),
-                            // Named without its suffix; the row below adds it.
-                            name: app.settings.device_name.clone(),
-                            is_active: app.local.is_active(),
-                            is_restricted: false,
-                            volume_percent: Some(crate::app::volume_to_percent(app.local.volume)),
-                            supports_volume: Some(true),
-                            kind: "computer".into(),
-                        },
-                    );
-                }
+                let soloist = app.settings.playback_engine == crate::soloist::PlaybackEngine::Soloist;
+                let ready = if soloist { app.soloist.phase == crate::soloist::Phase::Ready && app.soloist_device_id.is_some() } else { app.local_ready };
+                let local_id = ready.then(|| app.this_device_id().map(str::to_owned)).flatten();
+                let own_ids: Vec<_> = [app.local_device_id.clone(), app.soloist_device_id.clone(),
+                    Some(crate::player::EngineConfig::device_id_for(app.settings.device_name.trim()))]
+                    .into_iter().flatten().collect();
+                let current = local_id.as_ref().map(|id| Device {
+                    id: Some(id.clone()), name: app.settings.device_name.clone(), kind: "computer".into(),
+                    is_active: false, volume_percent: Some(crate::app::volume_to_percent(app.settings.volume)),
+                    supports_volume: Some(true), ..Device::default()
+                });
+                let mut devices = computer_outputs(app.devices.clone(), &own_ids, current);
                 let active_id = match app.target() {
                     crate::app::Target::Local => local_id.clone(),
                     crate::app::Target::Remote(id) => id,
@@ -470,6 +497,7 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                 let waiting: Vec<crate::zeroconf::Receiver> = app
                     .receivers
                     .iter()
+                    .filter(|receiver| !receiver.device_id.as_ref().is_some_and(|id| app.is_own_device(id)))
                     .filter(|receiver| !receiver_is_listed(receiver, &devices))
                     .cloned()
                     .collect();
@@ -497,10 +525,10 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                         .max_height(max_height),
                     egui::Vec2b::new(false, true),
                     |ui| {
-                        if !app.local_ready {
+                        if !ready {
                             enable_playback_row(app, ui);
                         }
-                        if rows.is_empty() && app.local_ready {
+                        if rows.is_empty() && ready {
                             ui.add_space(8.0);
                             theme::subtle(
                                 ui,
@@ -526,7 +554,7 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                                 let name = if is_local {
                                     // Translators: {name} is the name this computer uses in Spotify Connect.
                                     gettext(locale, "{name} (this computer)")
-                                        .replace("{name}", &device.name)
+                                        .replace("{name}", &app.settings.device_name)
                                 } else {
                                     device.name.clone()
                                 };
@@ -559,8 +587,12 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                                     theme::medium(14.0),
                                     color,
                                 );
-                                let status = if active {
+                                let status = if is_local && app.output_check_pending() {
+                                    gettext(locale, "Connecting to Spotify…").into_owned()
+                                } else if active && app.now_playing().is_some_and(|now| now.playing) {
                                     gettext(locale, "Listening on this device").into_owned()
+                                } else if active && is_local {
+                                    gettext(locale, "Play here").into_owned()
                                 } else if device.is_restricted {
                                     gettext(locale, "Restricted").into_owned()
                                 } else if is_local {
@@ -614,6 +646,33 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn this_computer_has_one_engine_row_without_hiding_another_mac_with_the_same_name() {
+        let devices: Vec<_> = ["librespot", "soloist", "another-mac"]
+            .into_iter()
+            .map(|id| Device {
+                id: Some(id.into()),
+                name: "same label".into(),
+                ..Device::default()
+            })
+            .collect();
+        for chosen in ["librespot", "soloist"] {
+            let rows = computer_outputs(
+                devices.clone(),
+                &["librespot".into(), "soloist".into()],
+                Some(Device {
+                    id: Some(chosen.into()),
+                    name: "This computer".into(),
+                    kind: "computer".into(),
+                    ..Device::default()
+                }),
+            );
+            assert_eq!(rows.len(), 2);
+            assert!(rows.iter().any(|d| d.id.as_deref() == Some("another-mac")));
+            assert_eq!(rows.iter().filter(|d| d.name == "This computer").count(), 1);
+        }
+    }
 
     #[test]
     fn active_then_frequent_outputs_rank_across_both_kinds_of_row() {

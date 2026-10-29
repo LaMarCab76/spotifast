@@ -427,10 +427,16 @@ pub struct App {
     pub local_device_id: Option<String>,
     pub soloist: crate::soloist::Status,
     pub soloist_device_id: Option<String>,
+    last_soloist_device_id: Option<String>,
     soloist_select_pending: bool,
+    soloist_start_pending: bool,
+    local_select_pending: bool,
+    startup_output_pending: bool,
+    startup_toggle_pending: bool,
     soloist_discovery_until: Option<Instant>,
     /// Ignore the previous local song until a Connect transfer reports its track.
     local_transfer_sequence: Option<u64>,
+    local_resume_after_transfer: Option<Instant>,
     /// Local playback is authorized and the engine is connected.
     pub local_ready: bool,
     pub local_playback: LocalPlayback,
@@ -1110,10 +1116,16 @@ impl App {
             user: None,
             local_device_id: None,
             local_transfer_sequence: None,
+            local_resume_after_transfer: None,
             local_ready: false,
             soloist: crate::soloist::Status::default(),
             soloist_device_id: None,
+            last_soloist_device_id: session.last_soloist_device_id.clone(),
             soloist_select_pending: false,
+            soloist_start_pending: false,
+            local_select_pending: false,
+            startup_output_pending: false,
+            startup_toggle_pending: false,
             soloist_discovery_until: None,
             local_playback: LocalPlayback::Unavailable,
             local: LocalState::default(),
@@ -1693,6 +1705,20 @@ impl App {
     }
 
     /// Where playback commands go: this computer's player or a remote device.
+    fn soloist_waiting(&self) -> bool {
+        self.settings.playback_engine == crate::soloist::PlaybackEngine::Soloist
+            && (self.soloist_start_pending
+                || matches!(
+                    self.soloist.phase,
+                    crate::soloist::Phase::Preparing | crate::soloist::Phase::Pairing
+                )
+                || (self.soloist.phase == crate::soloist::Phase::Ready
+                    && self.soloist_device_id.is_none()
+                    && self
+                        .soloist_discovery_until
+                        .is_some_and(|until| until > Instant::now())))
+    }
+
     fn start_soloist(&self) {
         if !self.is_connected() {
             return;
@@ -1704,7 +1730,47 @@ impl App {
             )));
     }
 
+    /// The single visible output for this computer, backed by the chosen engine.
+    pub fn this_device_id(&self) -> Option<&str> {
+        match self.settings.playback_engine {
+            crate::soloist::PlaybackEngine::Librespot => self.local_device_id.as_deref(),
+            crate::soloist::PlaybackEngine::Soloist => self.soloist_device_id.as_deref(),
+        }
+    }
+
+    pub fn is_own_device(&self, id: &str) -> bool {
+        self.local_device_id.as_deref() == Some(id)
+            || self.soloist_device_id.as_deref() == Some(id)
+            || self.last_soloist_device_id.as_deref() == Some(id)
+            || id == EngineConfig::device_id_for(self.settings.device_name.trim())
+    }
+
+    pub fn session_ready(&self) -> bool {
+        self.local_ready || matches!(self.local_playback, LocalPlayback::MetadataReady)
+    }
+
+    pub fn output_check_pending(&self) -> bool {
+        self.startup_output_pending
+    }
+
     pub fn target(&self) -> Target {
+        if self.startup_output_pending {
+            return Target::Remote(None);
+        }
+        if let Some(selected) = &self.selected_device
+            && !self.is_own_device(selected)
+            && self.remote_fresh().is_some_and(|remote| {
+                remote.state.is_playing
+                    && remote
+                        .state
+                        .device
+                        .as_ref()
+                        .and_then(|device| device.id.as_ref())
+                        == Some(selected)
+            })
+        {
+            return Target::Remote(Some(selected.clone()));
+        }
         if self.settings.playback_engine != crate::soloist::PlaybackEngine::Soloist
             && self.local_ready
             && self.local.is_active()
@@ -1714,19 +1780,29 @@ impl App {
         if let Some(selected) = &self.selected_device
             && Some(selected.as_str()) != self.local_device_id.as_deref()
         {
+            if self.settings.playback_engine == crate::soloist::PlaybackEngine::Soloist
+                && self.soloist_device_id.as_ref() == Some(selected)
+                && self.soloist.phase != crate::soloist::Phase::Ready
+            {
+                return Target::Remote(None);
+            }
             return Target::Remote(Some(selected.clone()));
         }
         if let Some(remote) = self.remote_fresh() {
             let device = remote.state.device.as_ref();
             let is_local = device
                 .and_then(|device| device.id.as_deref())
-                .is_some_and(|id| Some(id) == self.local_device_id.as_deref());
-            if !is_local && (remote.state.is_playing || remote.state.item.is_some()) {
+                .is_some_and(|id| self.is_own_device(id));
+            if !is_local && remote.state.is_playing {
                 return Target::Remote(device.and_then(|device| device.id.clone()));
             }
         }
         if self.settings.playback_engine == crate::soloist::PlaybackEngine::Soloist {
-            Target::Remote(self.soloist_device_id.clone())
+            Target::Remote(
+                (self.soloist.phase == crate::soloist::Phase::Ready)
+                    .then(|| self.soloist_device_id.clone())
+                    .flatten(),
+            )
         } else if self.local_ready {
             Target::Local
         } else {
@@ -2150,9 +2226,10 @@ impl App {
             volume_percent: volume,
             // A restricted device is driven over the playback session's
             // Connect link instead, see `crate::sonos`.
-            can_control: device.is_none_or(|device| !device.is_restricted || self.local_ready),
+            can_control: device.is_none_or(|device| !device.is_restricted || self.session_ready()),
             can_set_volume: device.is_none_or(|device| {
-                (!device.is_restricted || self.local_ready) && device.supports_volume != Some(false)
+                (!device.is_restricted || self.session_ready())
+                    && device.supports_volume != Some(false)
             }),
             is_episode,
             resuming: false,
@@ -2799,8 +2876,14 @@ impl App {
     }
 
     fn handle_auth(&mut self, status: AuthStatus) {
+        let starting = !self.is_connected();
         match &status {
             AuthStatus::Connected { .. } => {
+                if starting {
+                    self.startup_output_pending = true;
+                    self.startup_toggle_pending = false;
+                    self.selected_device = None;
+                }
                 self.sign_in_url = None;
                 self.reset_data();
                 // `Me` follows and reads the cache, even for the same
@@ -2827,6 +2910,10 @@ impl App {
                 self.local = LocalState::default();
                 self.local_ready = false;
                 self.local_device_id = None;
+                self.startup_output_pending = false;
+                self.startup_toggle_pending = false;
+                self.soloist_start_pending = false;
+                self.local_select_pending = false;
                 self.local_playback = LocalPlayback::Unavailable;
                 self.remote = None;
                 self.rootlist.clear();
@@ -2851,10 +2938,14 @@ impl App {
     /// Retries the Home shelf when local playback becomes ready after Home.
     fn handle_playback(&mut self, status: LocalPlayback) {
         match &status {
-            LocalPlayback::Ready { device_id } => {
-                self.local_device_id = Some(device_id.clone());
-                let became_ready = !self.local_ready;
-                self.local_ready = true;
+            LocalPlayback::Ready { .. } | LocalPlayback::MetadataReady => {
+                let became_ready = !self.session_ready();
+                self.local_device_id = match &status {
+                    LocalPlayback::Ready { device_id } => Some(device_id.clone()),
+                    _ => None,
+                };
+                self.local_ready = self.local_device_id.is_some();
+                self.local_playback = status.clone();
                 if became_ready
                     && self.home.requested
                     && (!self.home.made_for_you_personalized
@@ -2871,7 +2962,18 @@ impl App {
                     }
                     self.load_hidden_songs();
                 }
+                if matches!(status, LocalPlayback::MetadataReady) && self.soloist_start_pending {
+                    self.soloist_start_pending = false;
+                    self.start_soloist();
+                }
+                if self.local_ready && self.local_select_pending {
+                    self.local_select_pending = false;
+                    if let Some(id) = self.local_device_id.clone() {
+                        self.transfer(id);
+                    }
+                }
                 self.replay_queued_play();
+                self.replay_output_toggle();
             }
             LocalPlayback::Unavailable => {
                 self.local_ready = false;
@@ -2879,7 +2981,13 @@ impl App {
             }
             LocalPlayback::Failed(message) => {
                 self.local_ready = false;
-                if self.queued_play.take().is_some() {
+                if self.soloist_start_pending {
+                    self.soloist_start_pending = false;
+                    self.start_soloist();
+                }
+                if self.settings.playback_engine == crate::soloist::PlaybackEngine::Librespot
+                    && self.queued_play.take().is_some()
+                {
                     self.clear_play_pending();
                     self.intent_track = None;
                 }
@@ -3073,6 +3181,7 @@ impl App {
     fn reset_data(&mut self) {
         self.pending_remote_volume = None;
         self.local_transfer_sequence = None;
+        self.local_resume_after_transfer = None;
         self.queue_start_pending = None;
         self.pending_album_queues.clear();
         self.pending_queue_batches.clear();
@@ -3317,6 +3426,20 @@ impl App {
             self.poll_remote_soon();
         }
         self.local = state;
+        if let Some(at) = self.local_resume_after_transfer {
+            if at.elapsed() > Duration::from_secs(20) || self.local.error.is_some() {
+                self.local_resume_after_transfer = None;
+            } else if self.local_transfer_sequence.is_none()
+                && self.local.is_active()
+                && matches!(self.local.playback, Playback::Paused | Playback::Playing)
+            {
+                self.local_resume_after_transfer = None;
+                if self.local.playback == Playback::Paused {
+                    self.backend.player(PlayerCommand::Toggle);
+                    self.optimistic_playing = Some((true, Instant::now()));
+                }
+            }
+        }
         if self.local.playback == Playback::Playing
             && !self.local.loading
             && self.local.error.is_none()
@@ -5482,7 +5605,7 @@ impl App {
     /// Reads the songs hidden in Spotify's playlists, once per playback
     /// session.
     fn load_hidden_songs(&mut self) {
-        if self.hidden_songs_requested || !self.local_ready {
+        if self.hidden_songs_requested || !self.session_ready() {
             return;
         }
         self.hidden_songs_requested = true;
@@ -5496,7 +5619,7 @@ impl App {
     /// it on its own playlists, Discover Weekly and the other mixes made for
     /// the listener, and only the playback session can change it.
     pub fn can_hide_in(&self, playlist_uri: &str) -> bool {
-        self.local_ready
+        self.session_ready()
             && crate::util::uri_id(playlist_uri)
                 .filter(|_| playlist_uri.starts_with("spotify:playlist:"))
                 .and_then(|id| self.known_playlist(id))
@@ -5542,7 +5665,7 @@ impl App {
             self.home.awaiting += 1;
         }
         self.home.made_for_you_loading = true;
-        self.home.made_for_you_session_requested = self.local_ready;
+        self.home.made_for_you_session_requested = self.session_ready();
         if self.home.made_for_you.get().is_none() {
             self.home.made_for_you = Loadable::Loading;
         }
@@ -6626,7 +6749,7 @@ impl App {
     /// the playback session can read them. A read that failed is asked
     /// again on a visit a minute later.
     pub fn request_play_counts(&mut self, uri: &str) {
-        if !self.local_ready || !self.network_reachable {
+        if !self.session_ready() || !self.network_reachable {
             return;
         }
         let due = match self.play_count_reads.get(uri) {
@@ -6925,20 +7048,41 @@ impl App {
                 match result {
                     Ok(devices) => {
                         self.devices = devices;
-                        self.soloist_device_id = self
-                            .devices
-                            .iter()
-                            .find(|device| {
-                                device.name == self.soloist.device_name
-                                    && !self.soloist.device_name.is_empty()
-                            })
-                            .and_then(|device| device.id.clone());
+                        if self.soloist.phase == crate::soloist::Phase::Ready {
+                            let candidates: Vec<_> = self
+                                .devices
+                                .iter()
+                                .filter(|device| {
+                                    !self.soloist.device_name.is_empty()
+                                        && device.name == self.soloist.device_name
+                                })
+                                .collect();
+                            let ids: std::collections::BTreeSet<_> = candidates
+                                .iter()
+                                .filter_map(|device| device.id.clone())
+                                .collect();
+                            self.soloist_device_id = if ids.len() == 1
+                                && candidates.iter().all(|device| device.id.is_some())
+                            {
+                                ids.into_iter().next()
+                            } else {
+                                None
+                            };
+                            if let Some(id) = &self.soloist_device_id
+                                && self.last_soloist_device_id.as_ref() != Some(id)
+                            {
+                                self.last_soloist_device_id = Some(id.clone());
+                                self.session_dirty = true;
+                            }
+                        }
                         if self.soloist_select_pending
                             && let Some(id) = self.soloist_device_id.clone()
                         {
                             self.soloist_select_pending = false;
                             self.transfer_remote(id, self.activating_play);
                         }
+                        self.replay_queued_play();
+                        self.replay_output_toggle();
                         self.control_devices_stale = true;
                         if let Some((name, since)) = self.pending_transfer_to.clone() {
                             // The receiver's own id keeps another device of the
@@ -7001,6 +7145,19 @@ impl App {
                 self.remote_poll_pending = false;
                 match result {
                     Ok(state) => {
+                        if self.startup_output_pending {
+                            self.startup_output_pending = state.as_ref().is_some_and(|state| {
+                                state.is_playing
+                                    && state.device.as_ref().and_then(|d| d.id.as_ref()).is_none()
+                            });
+                            self.selected_device = state
+                                .as_ref()
+                                .filter(|state| state.is_playing)
+                                .and_then(|state| state.device.as_ref())
+                                .and_then(|device| device.id.as_ref())
+                                .filter(|id| !self.is_own_device(id))
+                                .cloned();
+                        }
                         self.reconcile_remote_volume(seq, state.as_ref());
                         let previous_uri = self.remote.as_ref().and_then(|remote| {
                             remote
@@ -7073,6 +7230,8 @@ impl App {
                         if uri != previous_uri {
                             self.on_now_playing_changed();
                         }
+                        self.replay_queued_play();
+                        self.replay_output_toggle();
                     }
                     Err(error) => log::debug!("playback state unavailable: {error}"),
                 }
@@ -8526,7 +8685,10 @@ impl App {
             }
             ApiResponse::Transferred { device_id, result } => match result {
                 Ok(()) => {
-                    self.selected_device = Some(device_id);
+                    // A later manual choice has superseded this transfer.
+                    if self.selected_device.as_ref() != Some(&device_id) {
+                        return;
+                    }
                     self.show_devices = false;
                     self.remote_command_at = Some(Instant::now());
                     self.poll_remote_soon();
@@ -9167,6 +9329,8 @@ impl App {
     /// in one ordered exchange: two independent requests race, and shuffle
     /// sometimes lost.
     fn play_request(&mut self, request: PlayRequest, shuffle_first: bool) {
+        self.startup_toggle_pending = false;
+        self.local_resume_after_transfer = None;
         // Whatever starts now outranks a play-search still in flight.
         self.supersede_play_search();
         // A play from a row names its row again after this.
@@ -9282,6 +9446,13 @@ impl App {
                 self.optimistic_playing = Some((true, Instant::now()));
             }
             Target::Remote(Some(device_id)) => {
+                if self.settings.playback_engine == crate::soloist::PlaybackEngine::Soloist
+                    && self.soloist_device_id.as_ref() == Some(&device_id)
+                    && self.soloist.phase != crate::soloist::Phase::Ready
+                {
+                    self.queued_play = Some(request);
+                    return;
+                }
                 self.queued_play = None;
                 if shuffle {
                     self.backend.api(ApiRequest::ShufflePlay {
@@ -9302,16 +9473,33 @@ impl App {
                 self.optimistic_playing = Some((true, Instant::now()));
             }
             Target::Remote(None) => {
+                if self.settings.playback_engine == crate::soloist::PlaybackEngine::Soloist
+                    && !self.startup_output_pending
+                    && !self.soloist_waiting()
+                {
+                    self.queue_start_pending = None;
+                    self.clear_play_pending();
+                    self.queued_play = None;
+                    self.intent_track = None;
+                    self.toast_error(gettext(
+                        self.locale,
+                        "Finish Soloist setup in Settings, or choose librespot.",
+                    ));
+                    return;
+                }
                 // No remote device is active, and this computer's player is
                 // not ready. Never ask Spotify to play "nowhere": either
                 // wait for the connecting engine or ask for a device.
-                if matches!(
-                    self.local_playback,
-                    LocalPlayback::Connecting
-                        | LocalPlayback::Authorizing
-                        | LocalPlayback::WaitingForNetwork
-                ) || (self.settings.playback_authorized
-                    && matches!(self.auth, AuthStatus::Starting | AuthStatus::Connecting))
+                if self.startup_output_pending
+                    || self.soloist_waiting()
+                    || matches!(
+                        self.local_playback,
+                        LocalPlayback::Connecting
+                            | LocalPlayback::Authorizing
+                            | LocalPlayback::WaitingForNetwork
+                    )
+                    || (self.settings.playback_authorized
+                        && matches!(self.auth, AuthStatus::Starting | AuthStatus::Connecting))
                 {
                     self.queued_play = Some(request);
                 } else {
@@ -9656,13 +9844,55 @@ impl App {
         true
     }
 
+    fn replay_output_toggle(&mut self) {
+        if self.startup_toggle_pending
+            && !self.startup_output_pending
+            && !matches!(self.target(), Target::Remote(None))
+        {
+            self.startup_toggle_pending = false;
+            if !self.now_playing_live().is_some_and(|now| now.playing) {
+                self.toggle_play();
+            }
+        }
+    }
+
     fn toggle_play(&mut self) {
+        if self.startup_output_pending {
+            self.startup_toggle_pending = !self.startup_toggle_pending;
+            if !self.remote_poll_pending {
+                self.poll_remote(true);
+            }
+            return;
+        }
+        if self.settings.playback_engine == crate::soloist::PlaybackEngine::Soloist
+            && matches!(self.target(), Target::Remote(None))
+        {
+            if self.soloist_waiting() {
+                self.startup_toggle_pending = !self.startup_toggle_pending;
+            } else {
+                self.toast_error(gettext(
+                    self.locale,
+                    "Finish Soloist setup in Settings, or choose librespot.",
+                ));
+            }
+            return;
+        }
         let playing = self.now_playing().map(|now| now.playing);
         match self.target() {
             Target::Local => {
                 if self.local.is_active() {
                     self.backend.player(PlayerCommand::Toggle);
                 } else if let Some(remote) = self.remote_fresh() {
+                    if remote.state.item.is_some()
+                        && let Some(id) = self.local_device_id.clone()
+                    {
+                        // This explicit Play takes over Connect's full queue and position.
+                        self.transfer(id);
+                        self.local_resume_after_transfer = Some(Instant::now());
+                        self.set_play_pending(vec!["::toggle".into()]);
+                        self.optimistic_playing = Some((true, Instant::now()));
+                        return;
+                    }
                     // Nothing is playing locally: resume on this computer.
                     let uri = remote
                         .state
@@ -9693,6 +9923,20 @@ impl App {
                 }
             }
             Target::Remote(device_id) => {
+                let managed = device_id.as_ref().is_some_and(|id| self.is_own_device(id));
+                if managed
+                    && self.remote_fresh().is_some_and(|remote| {
+                        remote.state.item.is_some()
+                            && remote.state.device.as_ref().and_then(|d| d.id.as_ref())
+                                != device_id.as_ref()
+                    })
+                {
+                    if let Some(id) = device_id {
+                        self.transfer_remote(id, true);
+                    }
+                    self.optimistic_playing = Some((true, Instant::now()));
+                    return;
+                }
                 if device_id.is_none() && self.remote_fresh().is_none() {
                     // Nothing is known to be playing anywhere, which is how
                     // a fresh start looks before the local engine is ready:
@@ -10977,23 +11221,37 @@ impl App {
             ));
             return;
         }
+        if self.startup_output_pending
+            && matches!(
+                &action,
+                Action::Next
+                    | Action::Previous
+                    | Action::Seek(_)
+                    | Action::SeekBy(_)
+                    | Action::SetVolume(_)
+                    | Action::PreviewVolume(_)
+                    | Action::VolumeBy(_)
+                    | Action::ToggleMute
+                    | Action::ToggleShuffle
+                    | Action::CycleRepeat
+                    | Action::SetShuffle(_)
+                    | Action::SetRepeat(_)
+                    | Action::ClearQueue
+                    | Action::AddToQueue { .. }
+            )
+        {
+            self.toast(gettext(self.locale, "Connecting to Spotify…"));
+            return;
+        }
         // A configured but unpaired receiver must never redirect a play to
         // whichever phone or old librespot device happens to be active.
         if self.settings.playback_engine == crate::soloist::PlaybackEngine::Soloist
-            && (self.selected_device.is_none() || self.selected_device == self.soloist_device_id)
+            && matches!(self.target(), Target::Remote(ref id) if id.is_none() || *id == self.soloist_device_id)
             && (self.soloist.phase != crate::soloist::Phase::Ready
                 || self.soloist_device_id.is_none())
             && matches!(
                 &action,
-                Action::PlayContext { .. }
-                    | Action::PlayUris { .. }
-                    | Action::PlayFromRow { .. }
-                    | Action::PlayEpisode { .. }
-                    | Action::ShufflePlay(_)
-                    | Action::PlaySearch { .. }
-                    | Action::PlaySearchMatch { .. }
-                    | Action::TogglePlay
-                    | Action::Next
+                Action::Next
                     | Action::Previous
                     | Action::Seek(_)
                     | Action::SeekBy(_)
@@ -11048,35 +11306,43 @@ impl App {
                 if engine == self.settings.playback_engine {
                     return;
                 }
-                self.activating_play = self.now_playing().is_some_and(|now| now.playing);
+                let external = match self.target() {
+                    Target::Remote(Some(id)) if !self.is_own_device(&id) => Some(id),
+                    _ => None,
+                };
+                let own_active =
+                    external.is_none() && self.now_playing().is_some_and(|now| now.playing);
+                self.activating_play = own_active;
                 self.settings.playback_engine = engine;
                 self.mark_settings_dirty();
-                self.selected_device = None;
+                self.selected_device = external;
                 self.queued_play = None;
+                self.startup_toggle_pending = false;
                 self.clear_play_pending();
                 self.audio_key_banner = false;
-                if engine == crate::soloist::PlaybackEngine::Soloist {
-                    if self.local.is_active() && self.local.playback == Playback::Playing {
-                        self.backend.player(PlayerCommand::Toggle);
-                    }
-                    self.soloist_select_pending = true;
-                    self.start_soloist();
-                } else {
-                    self.soloist_select_pending = false;
+                self.local_select_pending =
+                    own_active && engine == crate::soloist::PlaybackEngine::Librespot;
+                self.soloist_select_pending =
+                    own_active && engine == crate::soloist::PlaybackEngine::Soloist;
+                self.soloist_start_pending = engine == crate::soloist::PlaybackEngine::Soloist;
+                self.local_ready = false;
+                self.local_device_id = None;
+                self.local = LocalState::default();
+                self.local_playback = LocalPlayback::Connecting;
+                let config = engine_config(
+                    &self.dirs,
+                    &self.settings,
+                    self.applied_proxy.clone(),
+                    std::sync::Arc::clone(&self.winamp.tap),
+                    std::sync::Arc::clone(&self.winamp.eq),
+                );
+                self.backend.send(Command::RestartEngine(config));
+                if engine == crate::soloist::PlaybackEngine::Librespot {
+                    self.soloist_start_pending = false;
                     self.soloist_device_id = None;
-                    // Only an active receiver needs to survive until the
-                    // local Connect handoff. Incomplete setup must also lose
-                    // its pending start when librespot is chosen.
-                    if !self.soloist.running()
-                        || self.local.is_active()
-                        || self.local_device_id.is_none()
-                    {
-                        self.backend
-                            .send(Command::Soloist(crate::soloist::Request::Stop));
-                    }
-                    if let Some(id) = self.local_device_id.clone() {
-                        self.transfer(id);
-                    }
+                } else if !self.settings.playback_authorized {
+                    self.soloist_start_pending = false;
+                    self.start_soloist();
                 }
             }
             Action::InstallSoloist => self
@@ -11088,7 +11354,6 @@ impl App {
             Action::RestartSoloist => {
                 self.backend
                     .send(Command::Soloist(crate::soloist::Request::Stop));
-                self.soloist_select_pending = true;
                 self.start_soloist();
             }
             Action::Open(page) => self.open(page),
@@ -11707,19 +11972,40 @@ impl App {
                     .api(ApiRequest::FollowPlaylist { id, follow: false });
             }
             Action::Transfer(device_id) => {
-                self.soloist_select_pending = false;
-                if self.local_device_id.as_deref() == Some(device_id.as_str())
-                    && self.settings.playback_engine == crate::soloist::PlaybackEngine::Soloist
-                {
-                    self.settings.playback_engine = crate::soloist::PlaybackEngine::Librespot;
-                    self.mark_settings_dirty();
+                self.local_resume_after_transfer = None;
+                self.startup_output_pending = false;
+                self.startup_toggle_pending = false;
+                if self.queued_play.take().is_some() {
+                    self.clear_play_pending();
+                    self.intent_track = None;
+                    self.assumed_context = None;
                 }
+                self.local_select_pending = false;
+                self.soloist_select_pending = false;
+                let device_id = if self.is_own_device(&device_id) {
+                    let Some(id) = self.this_device_id().map(str::to_owned) else {
+                        self.toast(gettext(self.locale, "Connecting to Spotify…"));
+                        return;
+                    };
+                    id
+                } else {
+                    device_id
+                };
                 // The listener chose where to play instead.
                 self.audio_key_banner = false;
                 self.remember_device_choice(&device_id);
                 self.transfer(device_id);
             }
             Action::ActivateReceiver(receiver) => {
+                self.local_resume_after_transfer = None;
+                self.startup_output_pending = false;
+                self.startup_toggle_pending = false;
+                if self.queued_play.take().is_some() {
+                    self.clear_play_pending();
+                    self.intent_track = None;
+                    self.assumed_context = None;
+                }
+                self.local_select_pending = false;
                 self.soloist_select_pending = false;
                 self.audio_key_banner = false;
                 if self.activating_receiver.is_none() {
@@ -13317,6 +13603,7 @@ impl App {
         }
         if !self.offline {
             let session = SessionState {
+                last_soloist_device_id: self.last_soloist_device_id.clone(),
                 device_history: self.device_history.clone(),
                 last_page: Some(self.page().encode()),
                 recent_contexts: self.recent_contexts.clone(),
@@ -13605,6 +13892,7 @@ pub fn engine_config(
     eq: crate::eq::SharedEq,
 ) -> EngineConfig {
     EngineConfig {
+        playback: settings.playback_engine == crate::soloist::PlaybackEngine::Librespot,
         tap,
         eq,
         device_name: settings.device_name.trim().to_string(),
@@ -13890,6 +14178,319 @@ mod tests {
         Episode, Image, Page as ApiPage, ResumePoint, SavedEpisode, SavedTrack, SearchResults,
     };
 
+    fn startup_playback(id: &str, playing: bool) -> PlaybackState {
+        PlaybackState {
+            device: Some(Device {
+                id: Some(id.into()),
+                is_active: true,
+                ..Device::default()
+            }),
+            is_playing: playing,
+            item: Some(PlayableItem::Track(Track {
+                uri: "spotify:track:remembered".into(),
+                ..Track::default()
+            })),
+            progress_ms: Some(42_000),
+            ..PlaybackState::default()
+        }
+    }
+
+    #[test]
+    fn startup_defaults_to_the_chosen_engine_even_when_a_phone_is_paused() {
+        for engine in [
+            crate::soloist::PlaybackEngine::Librespot,
+            crate::soloist::PlaybackEngine::Soloist,
+        ] {
+            let mut app = headless_app();
+            app.settings.playback_engine = engine;
+            app.local_device_id = Some("local".into());
+            app.soloist_device_id = Some("soloist".into());
+            app.soloist.phase = crate::soloist::Phase::Ready;
+            app.startup_output_pending = true;
+            app.handle_api(ApiResponse::PlaybackState {
+                seq: app.remote_poll_seq,
+                result: Ok(Some(startup_playback("phone", false))),
+            });
+            assert_eq!(
+                app.target(),
+                if engine == crate::soloist::PlaybackEngine::Librespot {
+                    Target::Local
+                } else {
+                    Target::Remote(Some("soloist".into()))
+                }
+            );
+            assert!(
+                app.backend.take_transfer_requests().is_empty(),
+                "opening the app never transfers playback"
+            );
+        }
+    }
+
+    #[test]
+    fn startup_preserves_a_playing_phone_and_keeps_it_selected_when_paused() {
+        for engine in [
+            crate::soloist::PlaybackEngine::Librespot,
+            crate::soloist::PlaybackEngine::Soloist,
+        ] {
+            let mut app = headless_app();
+            app.settings.playback_engine = engine;
+            app.startup_output_pending = true;
+            app.handle_api(ApiResponse::PlaybackState {
+                seq: app.remote_poll_seq,
+                result: Ok(Some(startup_playback("phone", true))),
+            });
+            assert_eq!(app.target(), Target::Remote(Some("phone".into())));
+            app.handle_api(ApiResponse::PlaybackState {
+                seq: app.remote_poll_seq,
+                result: Ok(Some(startup_playback("phone", false))),
+            });
+            assert_eq!(app.target(), Target::Remote(Some("phone".into())));
+            assert!(app.backend.take_transfer_requests().is_empty());
+        }
+    }
+
+    #[test]
+    fn failed_or_old_startup_checks_cannot_redirect_playback() {
+        let mut app = headless_app();
+        app.startup_output_pending = true;
+        app.remote_poll_seq = 7;
+        app.handle_api(ApiResponse::PlaybackState {
+            seq: 6,
+            result: Ok(None),
+        });
+        app.handle_api(ApiResponse::PlaybackState {
+            seq: 7,
+            result: Err(crate::api::ApiError::RateLimited),
+        });
+        assert!(app.startup_output_pending);
+        app.apply(Action::Next, &egui::Context::default());
+        assert!(app.backend.take_player_commands().is_empty());
+        assert!(app.backend.take_remote_play_requests().is_empty());
+    }
+
+    #[test]
+    fn a_startup_play_does_not_pause_the_phone_discovered_playing() {
+        let mut app = headless_app();
+        app.startup_output_pending = true;
+        app.toggle_play();
+        app.handle_api(ApiResponse::PlaybackState {
+            seq: app.remote_poll_seq,
+            result: Ok(Some(startup_playback("phone", true))),
+        });
+        assert_eq!(app.target(), Target::Remote(Some("phone".into())));
+        assert!(app.backend.take_remote_play_requests().is_empty());
+        assert!(!app.startup_toggle_pending);
+    }
+
+    #[test]
+    fn a_cached_own_receiver_is_not_mistaken_for_another_playing_device() {
+        let mut app = headless_app();
+        app.last_soloist_device_id = Some("old-soloist".into());
+        app.startup_output_pending = true;
+        app.handle_api(ApiResponse::PlaybackState {
+            seq: app.remote_poll_seq,
+            result: Ok(Some(startup_playback("old-soloist", true))),
+        });
+        assert_eq!(app.target(), Target::Local);
+        assert!(app.backend.take_transfer_requests().is_empty());
+    }
+
+    #[test]
+    fn startup_does_not_assume_an_unidentified_playing_device_is_idle() {
+        let mut app = headless_app();
+        app.startup_output_pending = true;
+        app.handle_api(ApiResponse::PlaybackState {
+            seq: app.remote_poll_seq,
+            result: Ok(Some(PlaybackState {
+                is_playing: true,
+                ..PlaybackState::default()
+            })),
+        });
+        assert!(app.startup_output_pending);
+        assert_eq!(app.target(), Target::Remote(None));
+    }
+
+    #[test]
+    fn a_manual_device_choice_supersedes_the_startup_check() {
+        let mut app = headless_app();
+        app.startup_output_pending = true;
+        app.play_request(
+            PlayRequest::tracks(vec!["spotify:track:cancelled".into()]),
+            false,
+        );
+        app.apply(
+            Action::Transfer("chosen-speaker".into()),
+            &egui::Context::default(),
+        );
+        assert!(app.queued_play.is_none());
+        assert!(app.intent_track.is_none());
+        app.handle_api(ApiResponse::PlaybackState {
+            seq: app.remote_poll_seq,
+            result: Ok(Some(startup_playback("phone", true))),
+        });
+        assert_eq!(app.target(), Target::Remote(Some("chosen-speaker".into())));
+        app.handle_api(ApiResponse::Transferred {
+            device_id: "older-speaker".into(),
+            result: Ok(()),
+        });
+        assert_eq!(app.target(), Target::Remote(Some("chosen-speaker".into())));
+    }
+
+    #[test]
+    fn startup_retains_the_latest_song_until_the_output_is_known() {
+        let mut app = headless_app();
+        app.local.connected = true;
+        app.startup_output_pending = true;
+        app.play_request(
+            PlayRequest::tracks(vec!["spotify:track:first".into()]),
+            false,
+        );
+        app.play_request(
+            PlayRequest::tracks(vec!["spotify:track:latest".into()]),
+            false,
+        );
+        assert!(app.backend.take_player_commands().is_empty());
+        app.handle_api(ApiResponse::PlaybackState {
+            seq: app.remote_poll_seq,
+            result: Ok(None),
+        });
+        let commands = app.backend.take_player_commands();
+        assert!(
+            matches!(commands.as_slice(), [PlayerCommand::Load(spec)] if spec.context_uri.as_deref() == Some("spotify:track:latest"))
+        );
+    }
+
+    #[test]
+    fn a_song_waits_for_soloist_identity_without_playing_on_an_unaddressed_device() {
+        let mut app = headless_app();
+        app.settings.playback_engine = crate::soloist::PlaybackEngine::Soloist;
+        app.soloist.phase = crate::soloist::Phase::Pairing;
+        app.soloist.device_name = "our receiver".into();
+        app.play_request(
+            PlayRequest::tracks(vec!["spotify:track:chosen".into()]),
+            false,
+        );
+        assert!(app.queued_play.is_some());
+        assert!(app.backend.take_remote_play_requests().is_empty());
+        app.soloist.phase = crate::soloist::Phase::Ready;
+        app.handle_api(ApiResponse::Devices(Ok(vec![Device {
+            id: Some("our-id".into()),
+            name: "our receiver".into(),
+            ..Device::default()
+        }])));
+        let requests = app.backend.take_remote_play_requests();
+        assert!(
+            matches!(requests.as_slice(), [ApiRequest::Remote { device_id: Some(id), play: Some(play), .. }] if id == "our-id" && play.uris == ["spotify:track:chosen"])
+        );
+        assert!(app.backend.take_transfer_requests().is_empty());
+    }
+
+    #[test]
+    fn ambiguous_soloist_names_never_choose_an_arbitrary_computer() {
+        let mut app = headless_app();
+        app.settings.playback_engine = crate::soloist::PlaybackEngine::Soloist;
+        app.soloist.phase = crate::soloist::Phase::Ready;
+        app.soloist.device_name = "same name".into();
+        app.handle_api(ApiResponse::Devices(Ok(["first", "second"]
+            .into_iter()
+            .map(|id| Device {
+                id: Some(id.into()),
+                name: "same name".into(),
+                ..Device::default()
+            })
+            .collect())));
+        assert!(app.soloist_device_id.is_none());
+        assert_eq!(app.target(), Target::Remote(None));
+    }
+
+    #[test]
+    fn metadata_readiness_does_not_advertise_local_playback_or_lose_library_capabilities() {
+        let mut app = headless_app();
+        app.local_ready = false;
+        app.handle_playback(LocalPlayback::MetadataReady);
+        assert!(app.session_ready());
+        assert!(!app.local_ready);
+        assert!(app.local_device_id.is_none());
+        assert!(app.hidden_songs_requested);
+    }
+
+    #[test]
+    fn changing_the_engine_keeps_a_playing_external_device_selected() {
+        let mut app = headless_app();
+        app.remote = Some(RemoteSnapshot {
+            received_at: Instant::now(),
+            state: startup_playback("phone", true),
+        });
+        app.apply(
+            Action::SetPlaybackEngine(crate::soloist::PlaybackEngine::Soloist),
+            &egui::Context::default(),
+        );
+        assert_eq!(app.target(), Target::Remote(Some("phone".into())));
+        assert!(!app.soloist_select_pending);
+        assert!(app.backend.take_transfer_requests().is_empty());
+    }
+
+    #[test]
+    fn explicit_play_on_this_computer_transfers_the_paused_connect_queue() {
+        for engine in [
+            crate::soloist::PlaybackEngine::Librespot,
+            crate::soloist::PlaybackEngine::Soloist,
+        ] {
+            let mut app = headless_app();
+            app.settings.playback_engine = engine;
+            app.local_device_id = Some("local".into());
+            app.soloist_device_id = Some("soloist".into());
+            app.soloist.phase = crate::soloist::Phase::Ready;
+            app.remote = Some(RemoteSnapshot {
+                received_at: Instant::now(),
+                state: startup_playback("phone", false),
+            });
+            app.toggle_play();
+            if engine == crate::soloist::PlaybackEngine::Librespot {
+                assert_eq!(
+                    app.backend.take_player_commands(),
+                    [PlayerCommand::Transfer]
+                );
+                assert!(app.local_resume_after_transfer.is_some());
+                let loading = LocalState {
+                    connected: true,
+                    track: Some(crate::player::LocalTrack {
+                        uri: "spotify:track:remembered".into(),
+                        ..Default::default()
+                    }),
+                    track_sequence: 1,
+                    playback: Playback::Loading,
+                    ..Default::default()
+                };
+                app.handle_local(loading.clone());
+                assert!(
+                    app.local_resume_after_transfer.is_some(),
+                    "loading is not a completed paused handoff"
+                );
+                assert!(app.backend.take_player_commands().is_empty());
+                let paused = LocalState {
+                    playback: Playback::Paused,
+                    ..loading
+                };
+                app.handle_local(paused.clone());
+                assert_eq!(app.backend.take_player_commands(), [PlayerCommand::Toggle]);
+                app.handle_local(paused);
+                assert!(
+                    app.backend.take_player_commands().is_empty(),
+                    "resume is sent once"
+                );
+            } else {
+                assert!(
+                    matches!(app.backend.take_transfer_requests().as_slice(), [ApiRequest::Transfer { device_id, play: true }] if device_id == "soloist")
+                );
+            }
+            assert!(
+                app.backend.take_remote_play_requests().is_empty(),
+                "the queue is transferred, never rebuilt from a track snapshot"
+            );
+        }
+    }
+
     #[test]
     fn soloist_never_routes_a_play_to_the_old_local_engine() {
         let mut app = headless_app();
@@ -13897,6 +14498,7 @@ mod tests {
         app.local_ready = true;
         app.local.playback = Playback::Playing;
         app.soloist_device_id = Some("soloist-device".into());
+        app.soloist.phase = crate::soloist::Phase::Ready;
         assert_eq!(app.target(), Target::Remote(Some("soloist-device".into())));
         app.selected_device = Some("phone".into());
         assert_eq!(app.target(), Target::Remote(Some("phone".into())));
@@ -13926,6 +14528,7 @@ mod tests {
         let mut app = headless_app();
         app.settings.playback_engine = crate::soloist::PlaybackEngine::Soloist;
         app.soloist_device_id = Some("soloist-device".into());
+        app.soloist.phase = crate::soloist::Phase::Ready;
         app.selected_device = app.soloist_device_id.clone();
         app.set_volume(43, true);
         assert_eq!(volume_to_percent(app.settings.volume), 43);

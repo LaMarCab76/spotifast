@@ -28,7 +28,8 @@ Spotifast uses the Web API for:
 - **Catalogue:** albums, artists, tracks, shows, episodes, search, and
   recommendations. Artist pages include top tracks, releases, and related
   artists.
-- **Playback control:** listing devices, transferring playback, play, pause,
+- **Playback control:** listing devices, reading whether a device is playing,
+  transferring playback, play, pause,
   next, previous, seek, shuffle, repeat, volume, and reading or adding to the
   queue.
 

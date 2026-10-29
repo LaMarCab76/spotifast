@@ -787,6 +787,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
 
     let (status, detail, action) = match &app.local_playback {
+        crate::backend::LocalPlayback::MetadataReady => (
+            pgettext(locale, "playback status", "Ready"),
+            gettext(locale, "Library session ready. Audio uses Spotify Soloist."),
+            None,
+        ),
         crate::backend::LocalPlayback::Ready { .. } => (
             pgettext(locale, "playback status", "Ready"),
             gettext(locale, "This computer is a Spotify Connect device."),

@@ -157,7 +157,7 @@ pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
         } else {
             gettext(locale, "Pre-save")
         };
-        let enabled = data.saved.is_some() && !data.saving && app.local_ready;
+        let enabled = data.saved.is_some() && !data.saving && app.session_ready();
         let text_color = if enabled {
             ink
         } else {

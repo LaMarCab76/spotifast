@@ -1838,6 +1838,8 @@ pub struct CachedRootlist {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SessionState {
+    /// Last verified Soloist identity of this installation, never an arbitrary remote.
+    pub last_soloist_device_id: Option<String>,
     /// Recent explicit output choices, scoped to the verified Spotify account.
     pub device_history: crate::device_history::DeviceHistory,
     pub last_page: Option<String>,

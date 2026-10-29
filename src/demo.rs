@@ -1307,6 +1307,8 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             // Two local files in `playlist:pl1`, its third and fifth rows,
             // and no local files folder: both are unavailable.
             "soloist" => {
+                app.local_ready = false;
+                app.local_playback = crate::backend::LocalPlayback::MetadataReady;
                 app.settings.playback_engine = crate::soloist::PlaybackEngine::Soloist;
                 app.soloist_device_id = Some("demo-soloist".into());
                 app.soloist = crate::soloist::Status {

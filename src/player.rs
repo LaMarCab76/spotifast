@@ -44,6 +44,8 @@ use crate::vis::{AudioTap, Tapped};
 
 #[derive(Clone, Debug)]
 pub struct EngineConfig {
+    /// Announce a Connect player. Soloist keeps only the data session.
+    pub playback: bool,
     pub device_name: String,
     pub bitrate_kbps: u16,
     pub normalisation: bool,
@@ -70,7 +72,11 @@ impl EngineConfig {
     /// A stable Connect device id derived from the name, so Spotify keeps
     /// recognising this computer across restarts.
     pub fn device_id(&self) -> String {
-        hex(&Sha1::digest(self.device_name.as_bytes()))
+        Self::device_id_for(&self.device_name)
+    }
+
+    pub fn device_id_for(name: &str) -> String {
+        hex(&Sha1::digest(name.as_bytes()))
     }
 
     pub fn open_cache(&self) -> Result<Cache> {
@@ -379,12 +385,198 @@ impl KeptPlayer {
     }
 }
 
+/// A streaming data session, optionally owning this computer's Connect player.
+/// Soloist uses the same authenticated reads without advertising a second player.
 pub struct Engine {
+    session: Session,
+    audio: Option<AudioEngine>,
+    session_watch: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Engine {
+    pub async fn connect(
+        config: &EngineConfig,
+        proxy: Option<reqwest::Url>,
+        credentials: Credentials,
+        cache: Cache,
+        notify: Notify,
+        kept: Option<KeptPlayer>,
+    ) -> Result<Self> {
+        if config.playback {
+            let audio =
+                AudioEngine::connect(config, proxy, credentials, cache, notify, kept).await?;
+            return Ok(Self {
+                session: audio.session.clone(),
+                audio: Some(audio),
+                session_watch: None,
+            });
+        }
+        // A data session never creates Player, mixer, sink, Spirc or a Connect registration.
+        if let Some(kept) = kept {
+            kept.stop();
+        }
+        let session = Session::new(
+            SessionConfig {
+                device_id: config.device_id(),
+                proxy,
+                ..SessionConfig::default()
+            },
+            Some(cache),
+        );
+        session
+            .connect(credentials, true)
+            .await
+            .context("unable to connect the Spotify data session")?;
+        let watched = session.clone();
+        let session_watch = tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                tick.tick().await;
+                if watched.is_invalid() {
+                    notify(EngineEvent::SessionEnded);
+                    break;
+                }
+            }
+        });
+        Ok(Self {
+            session,
+            audio: None,
+            session_watch: Some(session_watch),
+        })
+    }
+
+    pub(crate) fn credentials(&self) -> Option<Credentials> {
+        self.session.cache().and_then(|cache| cache.credentials())
+    }
+    pub fn interrupted(&self) -> Option<Interrupted> {
+        self.audio.as_ref().and_then(AudioEngine::interrupted)
+    }
+
+    /// Wait for Spirc to withdraw the old player before starting another receiver.
+    pub async fn stop_player(&self) {
+        if let Some(audio) = &self.audio {
+            audio.shutdown();
+            if tokio::time::timeout(Duration::from_secs(5), async {
+                while !audio.finished.load(std::sync::atomic::Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .is_err()
+            {
+                self.session.shutdown();
+            }
+        }
+    }
+
+    pub fn has_player(&self) -> bool {
+        self.audio.is_some()
+    }
+    pub fn device_id(&self) -> &str {
+        self.session.device_id()
+    }
+    pub fn carrying(&self) -> bool {
+        self.audio.as_ref().is_some_and(AudioEngine::carrying)
+    }
+    pub fn keep_player(&self) -> Option<KeptPlayer> {
+        self.audio.as_ref().map(AudioEngine::keep_player)
+    }
+    pub(crate) fn heard(&self) -> Option<Heard> {
+        self.audio.as_ref().map(AudioEngine::heard)
+    }
+    pub fn resume_point(&self) -> Option<PlaybackResume> {
+        self.audio.as_ref().and_then(AudioEngine::resume_point)
+    }
+    pub fn resume(&self, resume: PlaybackResume) -> Result<()> {
+        self.audio
+            .as_ref()
+            .context("This session does not own audio playback")?
+            .resume(resume)
+    }
+    pub fn command(&self, command: PlayerCommand) -> Result<()> {
+        self.audio
+            .as_ref()
+            .context("This session does not own audio playback")?
+            .command(command)
+    }
+    pub fn shutdown(&self) {
+        if let Some(audio) = &self.audio {
+            audio.shutdown();
+        } else {
+            self.session.shutdown();
+        }
+        if let Some(watch) = &self.session_watch {
+            watch.abort();
+        }
+    }
+    pub fn close_session(&self) {
+        if let Some(audio) = &self.audio {
+            audio.close_session();
+        } else {
+            self.shutdown();
+        }
+    }
+    /// Whether Spotify classifies this album as an EP in its internal metadata.
+    pub(crate) async fn album_is_ep(&self, album_uri: &str) -> Result<bool> {
+        let uri = SpotifyUri::from_uri(album_uri).context("invalid album URI")?;
+        let album = MetadataAlbum::get(&self.session, &uri)
+            .await
+            .context("album metadata")?;
+        Ok(album.album_type == AlbumType::EP)
+    }
+
+    /// Spotify's own transcription of a track, as the raw JSON its clients
+    /// read; `Ok(None)` when Spotify has none, an error when asking failed.
+    pub async fn lyrics_json(&self, track_uri: &str) -> Result<Option<serde_json::Value>> {
+        let Some(id) = track_uri
+            .rsplit(':')
+            .next()
+            .and_then(|id| SpotifyId::from_base62(id).ok())
+        else {
+            return Ok(None);
+        };
+        match self.session.spclient().get_lyrics(&id).await {
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes).ok()),
+            Err(error) if error.kind == ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(anyhow!("spotify lyrics: {error}")),
+        }
+    }
+
+    /// Account playlist tree in Spotify order, including folder markers,
+    /// and which of its playlists the account may add songs to.
+    pub async fn rootlist(&self) -> Result<Rootlist> {
+        let mut uris = Vec::new();
+        let mut editable = std::collections::BTreeSet::new();
+        for contents in crate::session_reads::rootlist(&self.session).await? {
+            editable.extend(editable_uris(&contents));
+            uris.extend(contents.items.into_iter().filter_map(|item| item.uri));
+        }
+        Ok(Rootlist {
+            entries: parse_rootlist(&uris),
+            editable,
+        })
+    }
+
+    /// The streaming session, for reads that need no Web API quota.
+    pub fn session(&self) -> &Session {
+        &self.session
+    }
+}
+
+impl Drop for Engine {
+    fn drop(&mut self) {
+        if self.audio.is_none() {
+            self.shutdown();
+        }
+    }
+}
+
+struct AudioEngine {
+    finished: Arc<std::sync::atomic::AtomicBool>,
     player: Arc<Player>,
     spirc: Arc<Spirc>,
     session: Session,
     mixer: Arc<dyn Mixer>,
-    device_id: String,
     state: Arc<Mutex<LocalState>>,
     /// What was playing when the session ended on its own.
     interrupted: Arc<Mutex<Option<Interrupted>>>,
@@ -397,10 +589,7 @@ pub struct Engine {
     carrying: std::sync::atomic::AtomicBool,
 }
 
-impl Engine {
-    pub(crate) fn credentials(&self) -> Option<Credentials> {
-        self.session.cache().and_then(|cache| cache.credentials())
-    }
+impl AudioEngine {
     /// Connects to Spotify and announces this device on Spotify Connect.
     /// A player `kept` from an engine whose session dropped plays on, and
     /// this engine takes it over, instead of starting a player of its own.
@@ -459,6 +648,8 @@ impl Engine {
         let shutting_down = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let closing = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let interrupted: Arc<Mutex<Option<Interrupted>>> = Arc::default();
+        let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let ended = Arc::clone(&finished);
         let ended_flag = Arc::clone(&shutting_down);
         let ended_closing = Arc::clone(&closing);
         let ended_notify = Arc::clone(&notify);
@@ -466,6 +657,7 @@ impl Engine {
         let ended_interrupted = Arc::clone(&interrupted);
         tokio::spawn(async move {
             spirc_task.await;
+            ended.store(true, std::sync::atomic::Ordering::SeqCst);
             let shut_down = ended_flag.load(std::sync::atomic::Ordering::SeqCst);
             {
                 let mut current = ended_state.lock().unwrap_or_else(|p| p.into_inner());
@@ -481,13 +673,12 @@ impl Engine {
             }
         });
 
-        let device_id = config.device_id();
         Ok(Self {
+            finished,
             player,
             spirc: Arc::new(spirc),
             session,
             mixer,
-            device_id,
             state,
             interrupted,
             shutting_down,
@@ -600,10 +791,6 @@ impl Engine {
         })
     }
 
-    pub fn device_id(&self) -> &str {
-        &self.device_id
-    }
-
     /// What this engine is heard at, kept past the engine itself: the next
     /// engine starts there.
     pub(crate) fn heard(&self) -> Heard {
@@ -622,52 +809,6 @@ impl Engine {
             self.spirc.set_volume(volume)?;
         }
         Ok(())
-    }
-
-    /// Whether Spotify classifies this album as an EP in its internal metadata.
-    pub(crate) async fn album_is_ep(&self, album_uri: &str) -> Result<bool> {
-        let uri = SpotifyUri::from_uri(album_uri).context("invalid album URI")?;
-        let album = MetadataAlbum::get(&self.session, &uri)
-            .await
-            .context("album metadata")?;
-        Ok(album.album_type == AlbumType::EP)
-    }
-
-    /// Spotify's own transcription of a track, as the raw JSON its clients
-    /// read; `Ok(None)` when Spotify has none, an error when asking failed.
-    pub async fn lyrics_json(&self, track_uri: &str) -> Result<Option<serde_json::Value>> {
-        let Some(id) = track_uri
-            .rsplit(':')
-            .next()
-            .and_then(|id| SpotifyId::from_base62(id).ok())
-        else {
-            return Ok(None);
-        };
-        match self.session.spclient().get_lyrics(&id).await {
-            Ok(bytes) => Ok(serde_json::from_slice(&bytes).ok()),
-            Err(error) if error.kind == ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(anyhow!("spotify lyrics: {error}")),
-        }
-    }
-
-    /// Account playlist tree in Spotify order, including folder markers,
-    /// and which of its playlists the account may add songs to.
-    pub async fn rootlist(&self) -> Result<Rootlist> {
-        let mut uris = Vec::new();
-        let mut editable = std::collections::BTreeSet::new();
-        for contents in crate::session_reads::rootlist(&self.session).await? {
-            editable.extend(editable_uris(&contents));
-            uris.extend(contents.items.into_iter().filter_map(|item| item.uri));
-        }
-        Ok(Rootlist {
-            entries: parse_rootlist(&uris),
-            editable,
-        })
-    }
-
-    /// The streaming session, for reads that need no Web API quota.
-    pub fn session(&self) -> &Session {
-        &self.session
     }
 
     pub fn shutdown(&self) {
@@ -1834,9 +1975,28 @@ mod tests {
         assert_eq!(RepeatMode::Context.api_name(), "context");
     }
 
+    #[tokio::test]
+    async fn a_data_session_cannot_create_audio_or_accept_playback_and_closes_on_drop() {
+        let session = Session::new(SessionConfig::default(), None);
+        let engine = Engine {
+            session: session.clone(),
+            audio: None,
+            session_watch: None,
+        };
+        assert!(!engine.has_player());
+        assert!(engine.keep_player().is_none());
+        assert!(engine.heard().is_none());
+        assert!(engine.command(PlayerCommand::Transfer).is_err());
+        assert!(engine.resume_point().is_none());
+        engine.stop_player().await;
+        drop(engine);
+        assert!(session.is_invalid());
+    }
+
     #[test]
     fn device_id_is_stable_hex() {
         let config = EngineConfig {
+            playback: true,
             buffer_ms: crate::sink::DEFAULT_BUFFER_MS,
             tap: AudioTap::new(),
             eq: crate::eq::shared(),

@@ -693,3 +693,8 @@ API key is stored in the system credential store, never in settings.json.
 The state directory holds `soloist-program` and `soloist-session`. The cache
 directory holds Soloist's own cache, limited to 512 MiB.
 See [Soloist setup](/how-it-connects/#spotify-soloist).
+
+The restorable session also remembers `last_soloist_device_id`, the last verified
+receiver owned by this installation. It is used to recognize an old Connect row
+and never to send playback commands before the current receiver is ready.
+Older session files without this field remain readable.

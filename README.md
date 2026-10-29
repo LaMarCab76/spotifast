@@ -38,6 +38,9 @@ Spotify's app on the same local network. Soloist runs as a separate process;
 the memory figures above describe the original librespot path.
 The equalizer, visualizers, local files and advanced local queue edits remain
 librespot features. See [Soloist setup](docs/_reference/how-it-connects.md#spotify-soloist).
+This computer is selected automatically unless another
+Connect device is playing. Both engines share one computer row in the device
+picker; opening the app does not start or transfer playback.
 
 ![Spotifast Home with the playlist library, recommendations, queue, and player visible](docs/screenshot.png)
 

@@ -28,7 +28,9 @@ Spotify local-network access if the operating system asks. Pairing is only
 complete when Soloist reports an authenticated session. While setup is
 incomplete, play requests never fall back to some other active device.
 
-Spotifast keeps its librespot session for metadata and library requests.
+Spotifast keeps its librespot session for metadata and library requests. In
+Soloist mode this is a data-only session: it creates no audio player, mixer,
+or librespot Connect receiver. Only the chosen engine advertises playback.
 Playback controls and the queue use the existing external Spotify Connect
 route, including its Web API rate limits and queue restrictions. Soloist's
 event observer connects only to its loopback WebSocket endpoint. Neither the
@@ -57,6 +59,34 @@ Builds expire 90 days after compilation. Settings displays the remaining
 days. Select librespot to stop Soloist, then use **Download / update** to
 install a newer official build while keeping the pairing. Updates are
 requested explicitly and never interrupt playback.
+
+## Choosing this computer automatically
+
+At startup, Spotifast asks for fresh playback state before choosing an output.
+If another device is playing, Spotifast follows it. An inactive or paused
+external device does not override this computer as the default destination.
+Once Spotifast is following a device, pausing it does not move the output.
+Opening Spotifast never transfers a session or starts music by itself.
+
+The Connect picker shows one row for this computer, backed by the engine
+chosen in Settings. Its real device id remains distinct for each engine;
+other computers are never grouped just because their names match. Old local
+receiver rows cached by Spotify are omitted from Spotifast's picker. Other
+Spotify clients may take time to remove a receiver which has just stopped.
+
+A song chosen while startup or Soloist discovery is pending is held for the
+resolved destination. A later song replaces it. An explicit device choice
+cancels pending automatic selection. A failed or rate-limited startup check
+keeps selection pending instead of sending a command without a destination.
+On Play, a paused Connect session can be transferred to this computer with
+its queue and position, then resumed. Starting a specific song instead keeps
+that explicit choice. The existing queue restrictions still depend on the
+engine, even though both engines share one visible computer row.
+
+Changing engines while listening on another device prepares this computer
+without transferring that remote playback. Engine replacement stops the old
+receiver before enabling its replacement. Soloist's pairing and API key stay
+in place. The first pairing of a new Soloist installation is still required.
 
 ## Independent grants, once each
 

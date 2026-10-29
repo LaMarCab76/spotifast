@@ -31,6 +31,14 @@ The interface includes complete
 **Playback needs Spotify Premium.** Free accounts can browse and search, but
 cannot play music through Spotifast.
 
+**Optional official audio engine:** Settings → **Playback engine** can select
+Spotify Soloist instead of librespot. Download it from the same section, save
+your own Soloist API key in the system credential store, and pair it once from
+Spotify's app on the same local network. Soloist runs as a separate process;
+the memory figures above describe the original librespot path.
+The equalizer, visualizers, local files and advanced local queue edits remain
+librespot features. See [Soloist setup](docs/_reference/how-it-connects.md#spotify-soloist).
+
 ![Spotifast Home with the playlist library, recommendations, queue, and player visible](docs/screenshot.png)
 
 <details>

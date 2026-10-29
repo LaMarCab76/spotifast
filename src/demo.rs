@@ -1306,6 +1306,23 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             }
             // Two local files in `playlist:pl1`, its third and fifth rows,
             // and no local files folder: both are unavailable.
+            "soloist" => {
+                app.settings.playback_engine = crate::soloist::PlaybackEngine::Soloist;
+                app.soloist_device_id = Some("demo-soloist".into());
+                app.soloist = crate::soloist::Status {
+                    build: Some(crate::soloist::Build {
+                        version: "1.3.10.24".into(),
+                        expires_at: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs()
+                            + 89 * 86_400,
+                    }),
+                    key_saved: true,
+                    device_name: "Spotifast Soloist (Demo Mac)".into(),
+                    phase: crate::soloist::Phase::Ready,
+                };
+            }
             "local-rows" => demo_local_rows(app),
             // The same rows, and a local files folder of 128 songs that holds
             // the third row's file but not the fifth's.

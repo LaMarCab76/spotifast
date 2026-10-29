@@ -9,6 +9,12 @@ under **Playing next**, are the songs you queued yourself. Below them,
 under **Next up**, are the songs that come next in whatever playlist or
 album is playing. Your songs always play first.
 
+With the optional Soloist engine, Spotifast controls a separate Connect
+receiver, even when it runs on this computer. The external-device restrictions
+below apply: adding songs and ordinary playback controls are available;
+inserting, clearing, moving and removing individual queue occurrences remain
+specific to the local librespot engine.
+
 Above both, **Playing from** names where the playing song came from: the
 playlist, album, artist, or podcast, which opens when clicked, Liked
 Songs, or a radio named after the song, playlist, album, or artist it is

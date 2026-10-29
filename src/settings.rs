@@ -261,6 +261,8 @@ impl SlowAppBanner {
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    /// Audio is played by librespot, or by the separately installed official receiver.
+    pub playback_engine: crate::soloist::PlaybackEngine,
     /// The Spotify Connect name other devices see.
     pub device_name: String,
     /// 96, 160, or 320 kbps.
@@ -483,6 +485,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             device_name: "Spotifast".to_string(),
+            playback_engine: crate::soloist::PlaybackEngine::default(),
             bitrate: 320,
             normalisation: false,
             autoplay: true,

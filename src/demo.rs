@@ -167,7 +167,10 @@ fn album(index: usize) -> Album {
         total_tracks: Some(12),
         images: image(200 + index as u32),
         artists: vec![artist_ref(artist_index)],
-        release_date: Some(format!("{year}-03-1{}", index % 9)),
+        release_date: Some(match index {
+            1 => year.to_string(), // known only to the year
+            _ => format!("{year}-03-1{}", index % 9),
+        }),
         label: Some("Ninja Tune".into()),
         copyrights: vec![Copyright {
             text: format!("{year} Ninja Tune"),
@@ -8625,6 +8628,64 @@ mod tests {
             app.actions
                 .iter()
                 .any(|action| matches!(action, Action::Open(Page::Playlist(id)) if id == "pl2"))
+        );
+        app.backend.shutdown();
+    }
+
+    /// A Liked Songs row plays the collection while its rows are still
+    /// loading. It used to play only the loaded rows as a nameless list,
+    /// which stopped after the last of them and gave Spotify no context.
+    #[test]
+    fn a_liked_row_plays_the_collection_before_all_rows_load() {
+        use egui::accesskit::{Action as AccessibleAction, Role};
+        let (ctx, mut app) = accessible_app("liked-row-plays-collection");
+        app.open(Page::LikedSongs);
+        let liked = &mut app.library.liked;
+        liked.next_offset = Some(liked.items.len() as u32);
+        assert!(!app.library.liked.is_complete(), "more rows to load");
+        let chosen = PlayableItem::Track(app.library.liked.items[1].track.clone());
+        let label = format!("Play {}, {}", chosen.name(), chosen.subtitle());
+        // Only the page: its actions stay queued instead of being applied.
+        let render = |app: &mut App, events| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1280.0, 2200.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| crate::ui::collection::liked(app, ui),
+            );
+            output.textures_delta.clear();
+            output
+                .platform_output
+                .accesskit_update
+                .expect("screen-reader tree")
+        };
+        render(&mut app, vec![]);
+        let tree = render(&mut app, vec![]);
+        let row = accessible_node(&tree, &label, Role::Button);
+        app.actions.clear();
+        render(
+            &mut app,
+            vec![accessible_action(row, AccessibleAction::Click, None)],
+        );
+        let played = app.actions.iter().find_map(|action| match action {
+            Action::PlayFromRow {
+                context: RowContext::Context { uri: context, .. },
+                uri,
+                ..
+            } => Some((context.clone(), uri.clone())),
+            _ => None,
+        });
+        assert_eq!(
+            played,
+            Some((
+                "spotify:user:demo:collection".to_string(),
+                chosen.uri().to_string()
+            ))
         );
         app.backend.shutdown();
     }

@@ -908,6 +908,92 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
     );
 }
 
+/// One device control, including its remote name when the transport leaves
+/// enough room. The full name remains accessible and in the tooltip.
+fn devices_button(
+    app: &App,
+    ui: &mut egui::Ui,
+    now: Option<&NowPlaying>,
+    transport_right: f32,
+) -> egui::Response {
+    let palette = app.palette;
+    let remote = now.filter(|now| app.playing_elsewhere(now));
+    let icon = remote
+        .and_then(|now| now.device_kind.as_deref())
+        .map_or(Icon::Speaker, super::devices::device_icon);
+    let Some(now) = remote else {
+        return theme::icon_button(
+            ui,
+            icon,
+            18.0,
+            palette.secondary,
+            palette.text,
+            &gettext(app.locale, "Connect to a device"),
+        );
+    };
+    let name = now
+        .device_name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty());
+    let tooltip = name.map_or_else(
+        || gettext(app.locale, "Playing on another device").into_owned(),
+        |name| {
+            // Translators: {device} is the name of the device playing the music.
+            gettext(app.locale, "Playing on {device}").replace("{device}", name)
+        },
+    );
+    let edge = 18.0 + theme::ICON_BUTTON_PAD;
+    let gap = ui.spacing().item_spacing.x;
+    // Leave room for Queue, Lyrics and Listening activity, so adding the
+    // name never hides a control that already fit beside the transport.
+    let room = (ui.cursor().right() - transport_right - TRANSPORT_GAP - 4.0 * (edge + gap))
+        .clamp(0.0, 140.0);
+    let galley = name.filter(|_| room >= 40.0).map(|name| {
+        crate::bidi::layout(
+            ui.painter(),
+            name,
+            theme::medium(12.0),
+            palette.accent,
+            room,
+            1,
+            Some(crate::bidi::ELLIPSIS),
+        )
+    });
+    let width = edge
+        + galley
+            .as_ref()
+            .map_or(0.0, |galley| gap + galley.size().x.min(room));
+    let (rect, response) = ui.allocate_exact_size(vec2(width, edge), Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), &tooltip)
+    });
+    if ui.is_rect_visible(rect) {
+        let color = if response.hovered() || response.has_focus() {
+            palette.text
+        } else {
+            palette.accent
+        };
+        let icon_rect = Rect::from_min_size(rect.min, Vec2::splat(edge));
+        theme::paint_icon(ui, icon, icon_rect, 18.0, color);
+        if let Some(galley) = galley {
+            let text_rect = Rect::from_min_max(
+                pos2(
+                    icon_rect.right() + gap,
+                    rect.center().y - galley.size().y / 2.0,
+                ),
+                rect.right_bottom(),
+            );
+            ui.painter().with_clip_rect(rect).galley(
+                crate::bidi::galley_pos(text_rect, &galley),
+                galley,
+                color,
+            );
+        }
+    }
+    theme::focus_ring(ui, &response);
+    response.on_hover_text(tooltip)
+}
+
 fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, transport_right: f32) {
     let palette = app.palette;
     ui.spacing_mut().item_spacing.x = 6.0;
@@ -982,24 +1068,7 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, transport_
         ));
     }
     ui.add_space(4.0);
-    let remote = now.is_some_and(|now| !now.local);
-    // Playing elsewhere, the button shows that device's own icon.
-    let icon = now
-        .filter(|now| !now.local)
-        .and_then(|now| now.device_kind.as_deref())
-        .map_or(Icon::Speaker, super::devices::device_icon);
-    let devices = theme::icon_button(
-        ui,
-        icon,
-        18.0,
-        if remote {
-            palette.accent
-        } else {
-            palette.secondary
-        },
-        palette.text,
-        &gettext(app.locale, "Connect to a device"),
-    );
+    let devices = devices_button(app, ui, now, transport_right);
     ui.ctx().data_mut(|data| {
         data.insert_temp(egui::Id::new(super::devices::BUTTON_RECT_ID), devices.rect)
     });

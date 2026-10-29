@@ -537,7 +537,7 @@ fn section(
             bottom: 6,
         })
         .show(ui, |ui| {
-            ui.set_width(ui.available_width().min(760.0));
+            ui.set_width(ui.available_width());
             add_contents(ui);
         });
     ui.add_space(8.0);
@@ -591,7 +591,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         egui::Id::new("settings-search-field"),
         &mut filter,
         &gettext(locale, "Search settings"),
-        ui.available_width().min(400.0),
+        ui.available_width(),
     );
     let needle = filter.trim().to_lowercase();
     ui.data_mut(|data| data.insert_temp(egui::Id::new(SETTINGS_FILTER_ID), filter));
@@ -2874,6 +2874,39 @@ fn eq_curve(ui: &mut egui::Ui, palette: &Palette, settings: &crate::eq::EqSettin
 #[cfg(test)]
 mod tests {
     use super::{RELEASE_NOTES_URL, RowText, row_matches, section_matches};
+
+    #[test]
+    fn sections_fill_the_available_width_in_both_themes() {
+        for palette in [
+            crate::theme::Palette::dark(),
+            crate::theme::Palette::light(),
+        ] {
+            for width in [360.0, 760.0, 1400.0] {
+                let ctx = egui::Context::default();
+                crate::theme::install(&ctx);
+                crate::theme::apply(&ctx, &palette);
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(width, 800.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        let expected = ui.available_width() - 42.0;
+                        super::section(ui, &palette, "Section", |ui| {
+                            assert!(
+                                (ui.available_width() - expected).abs() < 2.0,
+                                "section leaves unused space at {width} points"
+                            );
+                        });
+                    },
+                );
+                output.textures_delta.clear();
+            }
+        }
+    }
 
     /// macOS has a menu bar where Linux and Windows have a tray, and the
     /// start-up choices say so (#1006).

@@ -1322,6 +1322,15 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                     device_name: "Spotifast Soloist (Demo Mac)".into(),
                     phase: crate::soloist::Phase::Ready,
                 };
+                if let Some(device) = app
+                    .remote
+                    .as_mut()
+                    .and_then(|remote| remote.state.device.as_mut())
+                {
+                    device.id.clone_from(&app.soloist_device_id);
+                    device.name.clone_from(&app.soloist.device_name);
+                    device.kind = "computer".into();
+                }
             }
             "local-rows" => demo_local_rows(app),
             // The same rows, and a local files folder of 128 songs that holds
@@ -2344,6 +2353,7 @@ mod tests {
 
         for &locale in Locale::value_variants() {
             let (ctx, mut app) = accessible_app(&format!("translated-player-{locale:?}"));
+            let device = app.now_playing().unwrap().device_name.unwrap();
             accessible_frame(&ctx, &mut app, vec![]);
             let english = accessible_frame(&ctx, &mut app, vec![]);
             let controls = [
@@ -2355,13 +2365,15 @@ mod tests {
                 ("Playback position (%)", Role::Slider),
                 ("Volume (%)", Role::Slider),
                 ("Mute", Role::Button),
-                ("Connect to a device", Role::Button),
+                ("Playing on {device}", Role::Button),
                 ("Queue", Role::Button),
                 ("Lyrics", Role::Button),
             ];
             let ids: Vec<_> = controls
                 .iter()
-                .map(|(source, role)| accessible_node(&english, source, *role))
+                .map(|(source, role)| {
+                    accessible_node(&english, &source.replace("{device}", &device), *role)
+                })
                 .collect();
             let pause = accessible_node(&english, "Pause", Role::Button);
             accessible_frame(
@@ -2374,7 +2386,11 @@ mod tests {
             assert_eq!(translated.focus, pause, "translation must retain focus");
             for ((source, role), id) in controls.iter().zip(ids) {
                 assert_eq!(
-                    accessible_node(&translated, &gettext(locale, source), *role),
+                    accessible_node(
+                        &translated,
+                        &gettext(locale, source).replace("{device}", &device),
+                        *role,
+                    ),
                     id,
                     "translation must retain the {source} control"
                 );
@@ -3058,6 +3074,51 @@ mod tests {
         accessible_node(&tree, "Focus, Ordner, ausgeklappt", Role::Button);
         accessible_node(&tree, "Weekend, Ordner, eingeklappt", Role::Button);
         app.backend.shutdown();
+    }
+
+    #[test]
+    fn nested_library_rows_have_a_clear_indent_in_normal_and_compact_lists() {
+        use crate::player::RootlistEntry::{FolderEnd, FolderStart, Playlist};
+        for compact in [false, true] {
+            for light in [false, true] {
+                let (ctx, mut app) = accessible_app("folder-indent");
+                app.settings.sidebar_grid = false;
+                app.settings.sidebar_compact = compact;
+                app.settings.theme = if light {
+                    crate::settings::ThemeChoice::Light
+                } else {
+                    crate::settings::ThemeChoice::Dark
+                };
+                app.rootlist = vec![
+                    Playlist("spotify:playlist:pl0".into()),
+                    FolderStart {
+                        id: "focus".into(),
+                        name: "Focus".into(),
+                    },
+                    Playlist("spotify:playlist:pl1".into()),
+                    FolderStart {
+                        id: "deep".into(),
+                        name: "Deep".into(),
+                    },
+                    Playlist("spotify:playlist:pl2".into()),
+                    FolderEnd,
+                    FolderEnd,
+                ];
+                app.settings.library_sort.insert(
+                    crate::settings::LibraryShelf::Playlists,
+                    crate::settings::LibrarySort::Spotify,
+                );
+                let view = crate::ui::sidebar::show;
+                view_frame(&ctx, &mut app, vec![], view);
+                let painted = view_frame(&ctx, &mut app, vec![], view);
+                let root = sidebar_text(&painted, "Discover Weekly").left();
+                let child = sidebar_text(&painted, "Late night focus").left();
+                let nested = sidebar_text(&painted, "Sunday morning").left();
+                assert!((child - root - 28.0).abs() < 1.0);
+                assert!((nested - child - 28.0).abs() < 1.0);
+                app.backend.shutdown();
+            }
+        }
     }
 
     #[test]
@@ -10955,6 +11016,99 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    #[test]
+    fn the_device_name_stays_by_the_player_controls_and_local_soloist_has_no_label() {
+        use egui::accesskit::{Action as AccessibleAction, Role};
+        for light in [false, true] {
+            for width in [760.0, 1280.0, 1920.0] {
+                let (ctx, mut app) = accessible_app("player-device-label");
+                app.settings.theme = if light {
+                    crate::settings::ThemeChoice::Light
+                } else {
+                    crate::settings::ThemeChoice::Dark
+                };
+                let name = "Living room speaker with a very long name";
+                app.remote
+                    .as_mut()
+                    .unwrap()
+                    .state
+                    .device
+                    .as_mut()
+                    .unwrap()
+                    .name = name.into();
+                let draw = |app: &mut App, events| {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(width, 800.0),
+                            )),
+                            events,
+                            ..Default::default()
+                        },
+                        |ui| app.frame_ui(ui),
+                    );
+                    output.textures_delta.clear();
+                    output.platform_output.accesskit_update.unwrap()
+                };
+                draw(&mut app, vec![]);
+                let tree = draw(&mut app, vec![]);
+                let label = format!("Playing on {name}");
+                let button = accessible_node(&tree, &label, Role::Button);
+                let bounds = |id| {
+                    tree.nodes
+                        .iter()
+                        .find(|(node, _)| *node == id)
+                        .unwrap()
+                        .1
+                        .bounds()
+                        .unwrap()
+                };
+                let device = bounds(button);
+                let repeat = bounds(accessible_node(&tree, "Repeat", Role::Button));
+                assert!(device.y0 > 700.0, "the device belongs in the bottom bar");
+                assert!(
+                    device.x0 >= repeat.x1,
+                    "the name must leave room for transport"
+                );
+                for label in ["Queue", "Lyrics"] {
+                    assert!(bounds(accessible_node(&tree, label, Role::Button)).x0 >= repeat.x1);
+                }
+                if width >= 1280.0 {
+                    assert!(device.x1 - device.x0 > 60.0, "show the name when it fits");
+                }
+                draw(
+                    &mut app,
+                    vec![accessible_action(button, AccessibleAction::Click, None)],
+                );
+                assert!(app.show_devices, "the name opens the device picker");
+                app.show_devices = false;
+
+                // The very same Connect route, now identifying the local receiver.
+                app.soloist_device_id = app
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .state
+                    .device
+                    .as_ref()
+                    .unwrap()
+                    .id
+                    .clone();
+                app.settings.playback_engine = crate::soloist::PlaybackEngine::Soloist;
+                let tree = draw(&mut app, vec![]);
+                accessible_node(&tree, "Connect to a device", Role::Button);
+                assert!(
+                    !tree
+                        .nodes
+                        .iter()
+                        .any(|(_, node)| node.label() == Some(label.as_str()))
+                );
+                app.backend.shutdown();
+            }
+        }
+    }
+
     /// The badges at the right end of the top bar sit in a right-to-left
     /// layout, which does not wrap and does not clip: anything that does not
     /// fit marches left over the search field. Draw the real bar and check
@@ -11046,13 +11200,13 @@ mod tests {
                         .rect
                         .right()
                         + FIELD_RIGHT_INSET;
-                    // Collapsed to an icon a badge keeps its label for a screen
-                    // reader, so it is found at every width.
-                    let device = badge("Playing on").expect("the device badge");
                     assert!(
-                        device >= field,
-                        "the device badge covers {} px of the search field at {width} px",
-                        field - device
+                        !tree.nodes.iter().any(|(_, node)| {
+                            node.label()
+                                .is_some_and(|label| label.starts_with("Playing on"))
+                                && node.bounds().is_some_and(|bounds| bounds.y0 < 100.0)
+                        }),
+                        "the playback device belongs in the player bar"
                     );
                     if let Some(label) = label {
                         let release = badge(label).expect("the update badge");

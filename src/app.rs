@@ -1955,6 +1955,19 @@ impl App {
             .or_else(|| self.resume_preview())
     }
 
+    /// Soloist plays on this computer even though its controls use Connect.
+    /// Keep that distinction out of `NowPlaying::local`, which also gates
+    /// librespot-only features such as the equalizer and queue editing.
+    pub fn playing_elsewhere(&self, now: &NowPlaying) -> bool {
+        !now.local
+            && !self.soloist_device_id.as_deref().is_some_and(|id| {
+                self.remote_fresh()
+                    .and_then(|remote| remote.state.device.as_ref())
+                    .and_then(|device| device.id.as_deref())
+                    == Some(id)
+            })
+    }
+
     fn refresh_frame_now(&mut self) {
         self.frame_now = self
             .requested_track_preview()
@@ -29194,7 +29207,7 @@ mod tests {
         app.backend.shutdown();
     }
 
-    /// The "Playing on" badge shows the playing device's own icon, so a
+    /// The player bar shows the playing device's own icon, so a
     /// phone is drawn as a phone rather than as a speaker.
     #[test]
     fn remote_playback_reports_the_device_kind_for_its_icon() {
@@ -29213,6 +29226,40 @@ mod tests {
             crate::ui::devices::device_icon(now.device_kind.as_deref().unwrap()),
             crate::theme::Icon::Smartphone
         ));
+        app.backend.shutdown();
+    }
+
+    #[test]
+    fn soloist_is_presented_as_this_computer_without_enabling_librespot_features() {
+        let mut app = headless_app();
+        crate::demo::populate(&mut app);
+        app.settings.playback_engine = crate::soloist::PlaybackEngine::Soloist;
+        app.soloist_device_id = Some("soloist-device".into());
+        app.frame_now = None;
+        let now = app.now_playing().unwrap();
+        assert!(app.playing_elsewhere(&now));
+
+        // A matching name on a different device is still remote.
+        let device = app.remote.as_mut().unwrap().state.device.as_mut().unwrap();
+        device.name = app.soloist.device_name.clone();
+        assert!(app.playing_elsewhere(&app.now_playing().unwrap()));
+
+        app.remote
+            .as_mut()
+            .unwrap()
+            .state
+            .device
+            .as_mut()
+            .unwrap()
+            .id = app.soloist_device_id.clone();
+        let mut now = app.now_playing().unwrap();
+        assert!(!now.local, "Soloist still uses Connect controls");
+        assert!(!app.playing_elsewhere(&now));
+
+        app.remote.as_mut().unwrap().state.device = None;
+        assert!(app.playing_elsewhere(&app.now_playing().unwrap()));
+        now.local = true;
+        assert!(!app.playing_elsewhere(&now), "librespot is local too");
         app.backend.shutdown();
     }
 

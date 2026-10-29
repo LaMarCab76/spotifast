@@ -21,7 +21,6 @@ const SPINNER_SIZE: f32 = 15.0;
 /// A badge is as tall as its text plus this, and as wide as its text plus
 /// the padding its own label needs.
 const BADGE_PADDING_Y: f32 = 12.0;
-const DEVICE_BADGE_PADDING: f32 = 28.0;
 /// The text starts 24 px in; leave 8 px after it to match the space before
 /// the icon.
 const UPDATE_BADGE_PADDING: f32 = 32.0;
@@ -282,22 +281,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
             // The badges sit at the right end but grow with their text, so
             // measure them here, before the search field takes its share.
-            let remote_now = app.now_playing().filter(|now| !now.local);
-            let device_icon = remote_now
-                .as_ref()
-                .and_then(|now| now.device_kind.as_deref())
-                .map_or(Icon::Speaker, crate::ui::devices::device_icon);
-            let device_galley = remote_now.map(|now| {
-                let label = match now.device_name {
-                    Some(device) => {
-                        // Translators: {device} is the name of the device playing the music.
-                        gettext(locale, "Playing on {device}").replace("{device}", &device)
-                    }
-                    None => gettext(locale, "Playing on another device").into_owned(),
-                };
-                ui.painter()
-                    .layout_no_wrap(label, theme::medium(12.5), palette.accent)
-            });
             let update = app.update.clone();
             let update_galley = update.as_ref().map(|update| {
                 let label = match &app.update_download {
@@ -319,10 +302,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             // then draws.
             let activity = app.background_activity();
             let busy = activity.is_some();
-            let badges = |labels: bool| {
-                badge_width(device_galley.as_ref(), DEVICE_BADGE_PADDING, labels)
-                    + badge_width(update_galley.as_ref(), UPDATE_BADGE_PADDING, labels)
-            };
+            let badges =
+                |labels: bool| badge_width(update_galley.as_ref(), UPDATE_BADGE_PADDING, labels);
             let controls = RIGHT_CONTROLS_WIDTH
                 + if !app.network_reachable {
                     ICON_BUTTON_SIZE + 4.0
@@ -582,28 +563,6 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     };
                     theme::spinner(ui, SPINNER_SIZE, palette.secondary)
                         .on_hover_text(hint.as_ref());
-                }
-                // Where playback is.
-                if let Some(galley) = device_galley {
-                    let device = galley.text().to_owned();
-                    let response = badge(
-                        ui,
-                        &palette,
-                        device_icon,
-                        galley,
-                        DEVICE_BADGE_PADDING,
-                        fit.labels,
-                    );
-                    // Without its label the badge still has to say where
-                    // playback went.
-                    let response = if fit.labels {
-                        response
-                    } else {
-                        response.on_hover_text(device)
-                    };
-                    if response.clicked() {
-                        app.actions.push(Action::ToggleDevicesPopup);
-                    }
                 }
                 // A newer release. Most people never visit a releases page,
                 // so the app says so, quietly, until they do.

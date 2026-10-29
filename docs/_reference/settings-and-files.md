@@ -4,6 +4,9 @@ description: Configuration, credential and cache locations, and what is safe to 
 nav_order: 0
 ---
 
+The Settings search field and sections fill the available page width. On narrow
+windows, controls move below their descriptions when needed.
+
 ## Where things live
 
 Linux media controls use `playerctl --player=spotifast`.

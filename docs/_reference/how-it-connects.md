@@ -36,6 +36,11 @@ API key nor librespot credentials are sent to that endpoint. The official
 Spotify app can be closed after pairing; continued playback still needs the
 Spotify network services.
 
+Soloist is shown as playback on this computer. Only playback on another
+device shows that device's name beside the device button in the player bar;
+the top bar does not repeat it. Long names are shortened to keep the controls
+available, with the full name in the tooltip.
+
 Spotifast's proxy configuration covers the download and existing Web API
 controls. It is not passed to Soloist, which manages its own Spotify network
 connections.

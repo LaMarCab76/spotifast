@@ -624,6 +624,9 @@ For example, `themes/gruvbox.json`:
 ```
 
 `base` is `dark` (the default) or `light`. Omitted colors inherit that palette.
+Spotifast's own Dark uses neutral greys close to Spotify's client: the page is
+`#121212`, and the library, side panels and player bar are black around it.
+A dark palette file that leaves out `window` or `panel` takes these.
 Supported colors are `window`, `panel`, `surface`, `surface_hover`,
 `surface_active`, `outline`, `text`, `secondary`, `dim`, `accent`,
 `accent_hover`, `on_accent`, `danger`, `warning`, `overlay`, `shadow`, and

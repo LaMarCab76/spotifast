@@ -1319,19 +1319,19 @@ fn handle_draw_canvas(_view: &SpotifastCanvasView, _dirty: NSRect) {
     let card_rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(card_w, card_h));
 
     // 1. Panel background: Subtle dark glass fill on top of HUDWindow blur.
-    //    Matches Spotifast's dark panel palette.panel (0x15, 0x18, 0x1c).
+    //    Matches Spotifast's dark page palette.window (0x12, 0x12, 0x12).
     let base_path = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(card_rect, 18.0, 18.0);
-    NSColor::colorWithRed_green_blue_alpha(0.08, 0.09, 0.11, 0.78).set();
+    NSColor::colorWithRed_green_blue_alpha(0.07, 0.07, 0.07, 0.78).set();
     base_path.fill();
 
-    // 2. 1px crisp outline: Matches Spotifast's palette.outline (0x2a, 0x30, 0x38).
+    // 2. 1px crisp outline: Matches Spotifast's palette.outline (0x2a, 0x2a, 0x2a).
     let border_rect = NSRect::new(
         NSPoint::new(0.5, 0.5),
         NSSize::new(card_w - 1.0, card_h - 1.0),
     );
     let border_path =
         NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(border_rect, 18.0, 18.0);
-    NSColor::colorWithRed_green_blue_alpha(0.16, 0.19, 0.22, 0.75).set();
+    NSColor::colorWithRed_green_blue_alpha(0.165, 0.165, 0.165, 0.75).set();
     unsafe {
         let () = objc2::msg_send![&border_path, setLineWidth: 1.0f64];
     }

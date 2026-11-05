@@ -39,24 +39,27 @@ pub struct Palette {
 }
 
 impl Palette {
+    /// Neutral greys close to Spotify's own client: the page on near-black,
+    /// the library, side panels and player bar on black around it.
     pub fn dark() -> Self {
         Self {
             dark: true,
-            window: Color32::from_rgb(0x0f, 0x11, 0x14),
-            panel: Color32::from_rgb(0x15, 0x18, 0x1c),
-            surface: Color32::from_rgb(0x1d, 0x21, 0x27),
-            surface_hover: Color32::from_rgb(0x26, 0x2b, 0x33),
-            surface_active: Color32::from_rgb(0x2f, 0x35, 0x3f),
-            outline: Color32::from_rgb(0x2a, 0x30, 0x38),
-            text: Color32::from_rgb(0xf2, 0xf4, 0xf6),
-            secondary: Color32::from_rgb(0xa9, 0xb1, 0xbc),
-            dim: Color32::from_rgb(0x6e, 0x77, 0x84),
+            window: Color32::from_rgb(0x12, 0x12, 0x12),
+            panel: Color32::from_rgb(0x00, 0x00, 0x00),
+            surface: Color32::from_rgb(0x1f, 0x1f, 0x1f),
+            surface_hover: Color32::from_rgb(0x2a, 0x2a, 0x2a),
+            surface_active: Color32::from_rgb(0x33, 0x33, 0x33),
+            outline: Color32::from_rgb(0x2a, 0x2a, 0x2a),
+            text: Color32::from_rgb(0xff, 0xff, 0xff),
+            secondary: Color32::from_rgb(0xb3, 0xb3, 0xb3),
+            // At least 4.5:1 on the page, as the bluer grey it replaces.
+            dim: Color32::from_rgb(0x7f, 0x7f, 0x7f),
             accent: Color32::from_rgb(0x1e, 0xd7, 0x60),
             accent_hover: Color32::from_rgb(0x3c, 0xe8, 0x7a),
             on_accent: Color32::from_rgb(0x0a, 0x14, 0x0e),
             danger: Color32::from_rgb(0xf5, 0x71, 0x7f),
             warning: Color32::from_rgb(0xf2, 0xb8, 0x5c),
-            overlay: Color32::from_rgb(0x22, 0x27, 0x2e),
+            overlay: Color32::from_rgb(0x28, 0x28, 0x28),
             shadow: Color32::from_black_alpha(140),
             tint: Color32::TRANSPARENT,
         }
@@ -1058,6 +1061,31 @@ mod tests {
             assert_eq!(&got[..], expected, "pixel {x},{y}");
         }
         output.textures_delta.clear();
+    }
+
+    /// WCAG contrast between two opaque colours.
+    fn contrast(a: Color32, b: Color32) -> f32 {
+        let luminance = |c: Color32| {
+            let [r, g, b, _] = egui::Rgba::from(c).to_array();
+            0.2126 * r + 0.7152 * g + 0.0722 * b
+        };
+        let (a, b) = (luminance(a), luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    /// The darker palette keeps every text role readable on the page and on
+    /// the black panels around it.
+    #[test]
+    fn dark_text_reads_on_the_page_and_the_panels() {
+        let dark = Palette::dark();
+        for background in [dark.window, dark.panel] {
+            assert!(contrast(dark.text, background) >= 7.0);
+            assert!(contrast(dark.secondary, background) >= 4.5);
+            assert!(contrast(dark.dim, background) >= 4.5);
+        }
+        assert!(contrast(dark.text, dark.overlay) >= 7.0);
+        assert!(contrast(dark.secondary, dark.surface_active) >= 4.5);
+        assert!(dark.panel.r() <= dark.window.r(), "panels sit darker");
     }
 
     /// Palette files name the sixteen colours every app shares and

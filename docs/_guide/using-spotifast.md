@@ -229,6 +229,13 @@ podcast again instead of reusing the episodes loaded earlier, so new
 episodes appear without restarting Spotifast. The episodes already shown
 stay until the new list arrives.
 
+## Side panels on the left or the right
+
+The queue, lyrics and listening activity open beside the page, on the right by
+default, and the Library sidebar sits on the other side. Choose **Left** for
+**Side panels** in Settings, under Appearance, to swap them: the panels open on
+the left and the Library moves to the right. Each keeps the width you gave it.
+
 ## Playing from the sidebar
 
 Double-click a playlist, Liked Songs, album, artist, or podcast row in the

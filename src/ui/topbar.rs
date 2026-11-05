@@ -198,13 +198,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     let locale = app.locale;
     let width = ui.available_width();
-    let mut window_controls = super::window_controls_reservation(
-        ui.ctx(),
-        app.show_queue_panel || app.show_friends_panel,
-        app.show_lyrics_panel,
-        width,
-    );
-    if !app.settings.sidebar_visible {
+    let mut window_controls = super::window_controls_reservation(ui.ctx(), app, width);
+    // Nothing else is under the window's top-left corner: the left-hand
+    // Linux buttons sit above the bar.
+    if super::corner_header(app, true) == super::Header::TopBar {
         window_controls.topbar_top = window_controls
             .topbar_top
             .max(super::linux_left_controls_inset(ui.ctx()));
@@ -240,7 +237,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 if nav_button(
                     ui,
                     &palette,
-                    Icon::PanelLeft,
+                    super::sidebar_icon(app),
                     true,
                     super::keys::platform_shortcut(
                         &gettext(locale, "Show sidebar (Ctrl+B)"),

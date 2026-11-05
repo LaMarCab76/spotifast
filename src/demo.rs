@@ -1351,6 +1351,8 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 app.library.filter = "No matching playlist".into();
             }
             "queue" => app.show_queue_panel = true,
+            "panels-left" => app.settings.panel_side = crate::settings::PanelSide::Left,
+            "no-podcasts" => app.settings.show_podcasts = false,
             "friends" => {
                 app.show_friends_panel = true;
                 app.friends = Loadable::Loaded(demo_friends());
@@ -13208,6 +13210,57 @@ mod tests {
                 app.backend.shutdown();
             }
         }
+    }
+
+    #[test]
+    fn side_panels_and_the_library_trade_sides() {
+        let (ctx, mut app) = accessible_app("panels-trade-sides");
+        app.open(Page::Playlist("pl1".into()));
+        let width = 1240.0;
+        let frame = |app: &mut App| {
+            for _ in 0..3 {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(width, 800.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| app.frame_ui(ui),
+                );
+                output.textures_delta.clear();
+            }
+        };
+        for panel in ["queue", "lyrics", "friends"] {
+            app.show_queue_panel = panel == "queue";
+            app.show_lyrics_panel = panel == "lyrics";
+            app.show_friends_panel = panel == "friends";
+            app.settings.panel_side = crate::settings::PanelSide::Right;
+            frame(&mut app);
+            let id = format!("{panel}-panel");
+            let load = |id: &str| {
+                egui::containers::panel::PanelState::load(&ctx, egui::Id::new(id))
+                    .unwrap()
+                    .outer_rect
+            };
+            let (library, side) = (load("sidebar"), load(&id));
+            assert_eq!(
+                library.left(),
+                0.0,
+                "{panel}: the library starts on the left"
+            );
+            assert_eq!(side.right(), width, "{panel} on the right");
+            let chosen = side.width();
+
+            app.settings.panel_side = crate::settings::PanelSide::Left;
+            frame(&mut app);
+            let (library, side) = (load("sidebar"), load(&id));
+            assert_eq!(side.left(), 0.0, "{panel} moves to the left");
+            assert_eq!(library.right(), width, "{panel}: the library moves right");
+            assert_eq!(side.width(), chosen, "{panel} keeps its width");
+        }
+        app.backend.shutdown();
     }
 
     #[test]

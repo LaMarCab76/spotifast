@@ -79,6 +79,16 @@ pub struct HomeSettings {
     pub recommendations: HomeShelfSettings,
 }
 
+/// The side of the window the queue, lyrics and listening activity open
+/// on. The library sidebar takes the other one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PanelSide {
+    Left,
+    #[default]
+    Right,
+}
+
 /// What moves behind the player bar's controls.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -333,6 +343,8 @@ pub struct Settings {
     /// Podcasts and audiobooks in the library, Home, search and Recents.
     /// Off leaves them out wherever one browses; what plays still plays.
     pub show_podcasts: bool,
+    /// Where the side panels open; the library sidebar takes the other side.
+    pub panel_side: PanelSide,
     pub sidebar_width: f32,
     pub lyrics_width: f32,
     pub queue_width: f32,
@@ -520,6 +532,7 @@ impl Default for Settings {
             sidebar_compact: false,
             sidebar_grid: false,
             show_podcasts: true,
+            panel_side: PanelSide::Right,
             sidebar_width: 250.0,
             lyrics_width: 360.0,
             queue_width: 360.0,
@@ -1416,6 +1429,18 @@ mod tests {
         let json = serde_json::to_string(&settings).unwrap();
         let restored: Settings = serde_json::from_str(&json).unwrap();
         assert!(!restored.sidebar_visible);
+    }
+
+    #[test]
+    fn side_panels_open_on_the_right_unless_moved() {
+        use super::PanelSide;
+        assert_eq!(Settings::default().panel_side, PanelSide::Right);
+        let older: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(older.panel_side, PanelSide::Right);
+        let read: Settings = serde_json::from_str(r#"{"panel_side": "left"}"#).unwrap();
+        assert_eq!(read.panel_side, PanelSide::Left);
+        let json = serde_json::to_value(&read).unwrap();
+        assert_eq!(json["panel_side"], "left");
     }
 
     #[test]

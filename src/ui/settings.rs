@@ -1237,6 +1237,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let sidebar_compact = gettext(locale, "Compact library sidebar");
     let tracklist_compact = gettext(locale, "Compact track list");
     let show_podcasts = gettext(locale, "Podcasts and audiobooks");
+    let panel_side = gettext(locale, "Side panels");
     let middle_click = gettext(locale, "Middle-click autoscroll");
     let custom_titlebar = gettext(locale, "Custom title bar");
     let show_custom_titlebar = cfg!(target_os = "linux") || app.windows_controls_visible();
@@ -1362,6 +1363,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             gettext(
                 locale,
                 "Show podcasts and audiobooks in your library, Home, search and the Recent tab. What is playing keeps playing.",
+            ),
+        ),
+        RowText::new(
+            panel_side.clone(),
+            gettext(
+                locale,
+                "Where the queue, lyrics and listening activity open. Your library takes the other side.",
             ),
         ),
     ];
@@ -1648,6 +1656,44 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     }
                 },
             );
+            {
+                use crate::settings::PanelSide;
+                let choices = [
+                    // Translators: the side of the window the side panels open on.
+                    (PanelSide::Left, pgettext(locale, "side", "Left")),
+                    // Translators: the side of the window the side panels open on.
+                    (PanelSide::Right, pgettext(locale, "side", "Right")),
+                ];
+                let choice_gap = 6.0;
+                let choices_width = choices
+                    .iter()
+                    .map(|(_, label)| theme::soft_button_width(ui, label))
+                    .sum::<f32>()
+                    + choice_gap;
+                filtered_row_sized(
+                    ui,
+                    &palette,
+                    &needle,
+                    &appearance,
+                    &appearance_rows[14],
+                    choices_width,
+                    |ui| {
+                        // Laid right to left, so the last choice goes first.
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = choice_gap;
+                            for (side, label) in choices.iter().rev() {
+                                let chosen = app.settings.panel_side == *side;
+                                if theme::soft_button(ui, &palette, None, label, chosen).clicked()
+                                    && !chosen
+                                {
+                                    app.settings.panel_side = *side;
+                                    changed = true;
+                                }
+                            }
+                        });
+                    },
+                );
+            }
             filtered_row(
                 ui,
                 &palette,

@@ -3046,6 +3046,11 @@ impl App {
                 },
                 Event::Lyrics { uri, result } => {
                     if self.lyrics_uri.as_deref() == Some(uri.as_str()) {
+                        // Timed words replacing untimed ones start over at
+                        // the line being sung.
+                        if matches!(self.lyrics, Loadable::Loaded(Some(_))) {
+                            self.lyrics_line_shown = None;
+                        }
                         self.lyrics = match result {
                             Ok(found) => Loadable::Loaded(found),
                             Err(error) => self.lyrics_failed(error, Instant::now()),
@@ -16132,7 +16137,7 @@ mod tests {
                     })
                     .collect(),
                 synced: true,
-                instrumental: false,
+                ..Default::default()
             }));
             if let Some(remote) = &mut app.remote {
                 remote.state.is_playing = false;
@@ -23978,6 +23983,48 @@ mod tests {
             Ok(Default::default()),
         );
         assert!(!app.artist_profiles.contains_key(artist));
+        app.backend.shutdown();
+    }
+
+    /// Untimed words show at once; timed ones for the same song replace
+    /// them and start at the line being sung. A late answer for another
+    /// song changes nothing.
+    #[test]
+    fn timed_lyrics_replace_untimed_ones_for_the_same_song() {
+        use crate::lyrics::{Line, Lyrics, Source};
+        let mut app = test_app("lyrics-upgrade");
+        let uri = "spotify:track:rosewood";
+        app.lyrics_uri = Some(uri.into());
+        app.lyrics = Loadable::Loading;
+        let plain = Lyrics {
+            lines: vec![Line {
+                at_ms: None,
+                text: "Words".into(),
+            }],
+            source: Some(Source::Spotify { provider: None }),
+            ..Lyrics::default()
+        };
+        let timed = Lyrics {
+            lines: vec![Line {
+                at_ms: Some(1_000),
+                text: "Words".into(),
+            }],
+            synced: true,
+            source: Some(Source::Lrclib),
+            ..Lyrics::default()
+        };
+        let answer = |uri: &str, lyrics: &Lyrics| crate::backend::Event::Lyrics {
+            uri: uri.into(),
+            result: Ok(Some(lyrics.clone())),
+        };
+        app.handle_backend_events(vec![answer(uri, &plain)]);
+        assert_eq!(app.lyrics.get(), Some(&Some(plain.clone())));
+        app.lyrics_line_shown = Some(None);
+        app.handle_backend_events(vec![answer(uri, &timed)]);
+        assert_eq!(app.lyrics.get(), Some(&Some(timed.clone())));
+        assert_eq!(app.lyrics_line_shown, None, "the sung line is found again");
+        app.handle_backend_events(vec![answer("spotify:track:other", &plain)]);
+        assert_eq!(app.lyrics.get(), Some(&Some(timed)));
         app.backend.shutdown();
     }
 

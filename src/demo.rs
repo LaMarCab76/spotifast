@@ -880,7 +880,10 @@ fn sample_lyrics() -> crate::lyrics::Lyrics {
             })
             .collect(),
         synced: true,
-        instrumental: false,
+        source: Some(crate::lyrics::Source::Spotify {
+            provider: Some("Musixmatch".into()),
+        }),
+        ..Default::default()
     }
 }
 

@@ -861,6 +861,14 @@ from LRCLIB by its artist, title, album and length.
 Synced lyrics follow the playing line automatically. Scroll to pause following,
 choose **Follow** to resume it, or choose a line to jump to that part of the song.
 
+Spotify's own lyrics come first while local playback is signed in, as in its
+apps; most are licensed from Musixmatch. When the words Spotify or a local file
+has carry no timing, they show at once and LRCLIB is asked for timed words:
+those for a recording of the same length, within three seconds, take their
+place and follow the song. A line under the lyrics in the panel says where they
+come from: **Lyrics provided by Musixmatch** when Spotify names it, or Spotify,
+LRCLIB or the song's file.
+
 The expand button in the lyrics panel or at the right of the player bar, or
 **F** when no text field has focus, opens lyrics in full screen. A narrow
 window has no room for the player bar's button. Press **F** or **Esc**, or

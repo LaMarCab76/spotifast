@@ -2,7 +2,9 @@
 //!
 //! [LRCLIB](https://lrclib.net) provides plain and LRC-synced lyrics without an
 //! account or key. Spotifast tries Spotify's transcription first when the
-//! playback session is signed in, then LRCLIB.
+//! playback session is signed in, then LRCLIB. Words that follow the song
+//! are the point: when Spotify's carry no timing, LRCLIB's timed words for
+//! the same recording take their place.
 //!
 //! Matching starts with an exact lookup, then ranks search results. Track
 //! length is the strongest signal for distinguishing versions with the same
@@ -34,6 +36,11 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 /// Any longer and the song may have moved on; the error shows instead,
 /// and a click on it asks again.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(5);
+/// Timed words replace an exact but untimed transcription only for a
+/// recording this close in length: another version's timing would drift.
+const SAME_RECORDING_MS: u32 = 3_000;
+/// Longer than any provider's name; anything longer is not one.
+const MAX_PROVIDER_LEN: usize = 40;
 
 /// Track metadata used for lyrics lookup.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,6 +65,49 @@ pub struct Lyrics {
     pub synced: bool,
     /// The database knows there are no words.
     pub instrumental: bool,
+    /// Where the words come from, for the panel's credit. Answers cached
+    /// before it was kept have none until the backend names their source.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<Source>,
+    /// How long the recording the words were timed to runs, when the
+    /// service says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length_ms: Option<u32>,
+}
+
+/// Where a song's words come from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Source {
+    /// The song's own file: a `.lrc` beside it, or its tags.
+    File,
+    /// Spotify's own transcription, with the provider Spotify names for
+    /// it, such as Musixmatch, when it names one.
+    Spotify {
+        provider: Option<String>,
+    },
+    Lrclib,
+}
+
+impl Lyrics {
+    /// These lyrics, credited to `source` unless they already name one.
+    pub fn from_source(mut self, source: Source) -> Self {
+        self.source.get_or_insert(source);
+        self
+    }
+
+    /// Whether `timed` should take the place of these untimed words for
+    /// `query`: they follow the song, and were timed to a recording of the
+    /// same length. Without both lengths, the exact transcription stays.
+    pub fn yields_to(&self, timed: &Lyrics, query: &Query) -> bool {
+        !self.synced
+            && !self.instrumental
+            && timed.synced
+            && query.duration_ms > 0
+            && timed
+                .length_ms
+                .is_some_and(|length| length.abs_diff(query.duration_ms) <= SAME_RECORDING_MS)
+    }
 }
 
 impl Lyrics {
@@ -74,9 +124,20 @@ impl Lyrics {
     }
 }
 
-/// Parses Spotify's `color-lyrics` response.
+/// Parses Spotify's `color-lyrics` response, keeping the provider Spotify
+/// credits for it.
 pub fn from_spotify(json: &serde_json::Value) -> Option<Lyrics> {
     let lyrics = json.get("lyrics")?;
+    let provider = ["providerDisplayName", "provider"]
+        .iter()
+        .find_map(|key| lyrics.get(*key).and_then(|value| value.as_str()))
+        .map(str::trim)
+        .filter(|name| {
+            !name.is_empty()
+                && name.chars().count() <= MAX_PROVIDER_LEN
+                && !name.chars().any(char::is_control)
+        })
+        .map(str::to_string);
     let synced = lyrics.get("syncType").and_then(|value| value.as_str()) == Some("LINE_SYNCED");
     let lines: Vec<Line> = lyrics
         .get("lines")?
@@ -110,6 +171,8 @@ pub fn from_spotify(json: &serde_json::Value) -> Option<Lyrics> {
         lines,
         synced,
         instrumental: false,
+        source: Some(Source::Spotify { provider }),
+        length_ms: None,
     })
 }
 
@@ -346,34 +409,38 @@ impl Record {
     }
 
     fn lyrics(&self) -> Option<Lyrics> {
+        let length_ms = self
+            .duration
+            .filter(|duration| duration.is_finite() && *duration > 0.0)
+            .map(|duration| (duration * 1000.0).round().min(f64::from(u32::MAX)) as u32);
+        let found = |lines, synced, instrumental| Lyrics {
+            lines,
+            synced,
+            instrumental,
+            source: Some(Source::Lrclib),
+            length_ms,
+        };
         if self.instrumental {
-            return Some(Lyrics {
-                instrumental: true,
-                ..Lyrics::default()
-            });
+            return Some(found(Vec::new(), false, true));
         }
         if let Some(synced) = self.synced() {
             let lines = parse_lrc(synced);
             if !lines.is_empty() {
-                return Some(Lyrics {
-                    lines,
-                    synced: true,
-                    instrumental: false,
-                });
+                return Some(found(lines, true, false));
             }
         }
         let plain = self.plain()?;
-        Some(Lyrics {
-            lines: plain
+        Some(found(
+            plain
                 .lines()
                 .map(|line| Line {
                     at_ms: None,
                     text: line.trim_end().to_string(),
                 })
                 .collect(),
-            synced: false,
-            instrumental: false,
-        })
+            false,
+            false,
+        ))
     }
 }
 
@@ -656,7 +723,7 @@ pub fn from_text(text: &str) -> Option<Lyrics> {
         return Some(Lyrics {
             lines: timed,
             synced: true,
-            instrumental: false,
+            ..Lyrics::default()
         });
     }
     Some(Lyrics {
@@ -668,8 +735,7 @@ pub fn from_text(text: &str) -> Option<Lyrics> {
                 text: line.trim_end().to_string(),
             })
             .collect(),
-        synced: false,
-        instrumental: false,
+        ..Lyrics::default()
     })
 }
 
@@ -1062,7 +1128,7 @@ mod tests {
         let lyrics = Lyrics {
             lines: parse_lrc("[00:05]a\n[00:10]b\n[00:15]c"),
             synced: true,
-            instrumental: false,
+            ..Lyrics::default()
         };
         assert_eq!(lyrics.active_line(0), None);
         assert_eq!(lyrics.active_line(5_000), Some(0));
@@ -1070,8 +1136,7 @@ mod tests {
         assert_eq!(lyrics.active_line(99_000), Some(2));
         let plain = Lyrics {
             lines: vec![Line::default()],
-            synced: false,
-            instrumental: false,
+            ..Lyrics::default()
         };
         assert_eq!(plain.active_line(5_000), None);
     }
@@ -1088,5 +1153,100 @@ mod tests {
         assert_eq!(plain.lines.len(), 1);
         let nothing = Record::default();
         assert!(nothing.lyrics().is_none());
+        assert_eq!(synced.source, Some(Source::Lrclib));
+        assert_eq!(synced.length_ms, Some(100_000));
+    }
+
+    #[test]
+    fn spotifys_answer_names_its_provider() {
+        let answer =
+            |lyrics: serde_json::Value| from_spotify(&serde_json::json!({ "lyrics": lyrics }));
+        let lines = serde_json::json!([{"startTimeMs": "1000", "words": "Hello"}]);
+        let named = answer(serde_json::json!({
+            "syncType": "LINE_SYNCED",
+            "lines": lines,
+            "provider": "MusixMatch",
+            "providerDisplayName": "Musixmatch"
+        }))
+        .unwrap();
+        assert_eq!(
+            named.source,
+            Some(Source::Spotify {
+                provider: Some("Musixmatch".into())
+            })
+        );
+        let unnamed = answer(serde_json::json!({"syncType": "UNSYNCED", "lines": lines})).unwrap();
+        assert_eq!(unnamed.source, Some(Source::Spotify { provider: None }));
+        let odd = answer(serde_json::json!({
+            "syncType": "UNSYNCED",
+            "lines": lines,
+            "providerDisplayName": "x".repeat(200)
+        }))
+        .unwrap();
+        assert_eq!(
+            odd.source,
+            Some(Source::Spotify { provider: None }),
+            "not a name"
+        );
+    }
+
+    /// Spotify's untimed words give way only to timed words for the same
+    /// recording; another version's timing would drift.
+    #[test]
+    fn untimed_words_yield_to_timed_ones_for_the_same_recording() {
+        let query = Query {
+            artist: "Bonobo".into(),
+            title: "Rosewood".into(),
+            album: "Fragments".into(),
+            duration_ms: 180_000,
+        };
+        let plain = Lyrics {
+            lines: vec![Line::default()],
+            source: Some(Source::Spotify { provider: None }),
+            ..Lyrics::default()
+        };
+        let timed = |length_ms| Lyrics {
+            lines: parse_lrc("[00:05]a"),
+            synced: true,
+            source: Some(Source::Lrclib),
+            length_ms,
+            ..Lyrics::default()
+        };
+        assert!(plain.yields_to(&timed(Some(181_500)), &query));
+        assert!(
+            !plain.yields_to(&timed(Some(190_000)), &query),
+            "another version"
+        );
+        assert!(
+            !plain.yields_to(&timed(None), &query),
+            "a length nobody gave"
+        );
+        let untimed = Lyrics {
+            synced: false,
+            ..timed(Some(180_000))
+        };
+        assert!(!plain.yields_to(&untimed, &query));
+        assert!(!timed(Some(180_000)).yields_to(&timed(Some(180_000)), &query));
+        let unknown = Query {
+            duration_ms: 0,
+            ..query.clone()
+        };
+        assert!(!plain.yields_to(&timed(Some(0)), &unknown));
+    }
+
+    /// Answers cached before the source was kept still read, and are
+    /// credited by whoever finds them.
+    #[test]
+    fn older_cached_answers_read_without_a_source() {
+        let old: Lyrics =
+            serde_json::from_str(r#"{"lines": [], "synced": false, "instrumental": true}"#)
+                .unwrap();
+        assert_eq!(old.source, None);
+        assert_eq!(old.from_source(Source::Lrclib).source, Some(Source::Lrclib));
+        let named = Lyrics {
+            source: Some(Source::File),
+            ..Lyrics::default()
+        };
+        assert_eq!(named.from_source(Source::Lrclib).source, Some(Source::File));
     }
 }

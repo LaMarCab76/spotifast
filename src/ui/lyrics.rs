@@ -283,6 +283,10 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
                 }
                 ui.add_space(LINE_GAP);
             }
+            if let Some(credit) = credit(app.locale, &lyrics) {
+                ui.add_space(LINE_GAP);
+                theme::text(ui, credit, theme::regular(12.0), palette.dim);
+            }
             // Words without timing can only be followed by the clock: sit
             // at the part of the text the song is probably at.
             if app.lyrics_following && !lyrics.synced && now.duration_ms > 0 {
@@ -311,6 +315,25 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
         app.lyrics_following = false;
     }
     app.lyrics_line_shown = Some(active);
+}
+
+/// Who the words come from, as Spotify's own apps credit them: the
+/// provider Spotify names, or the service or file Spotifast read them from.
+/// Words whose source was never kept get no credit rather than a guess.
+fn credit(locale: crate::i18n::Locale, lyrics: &crate::lyrics::Lyrics) -> Option<String> {
+    use crate::lyrics::Source;
+    Some(match lyrics.source.as_ref()? {
+        Source::Spotify {
+            provider: Some(provider),
+        } => {
+            // Translators: {provider} is the company Spotify licenses the
+            // lyrics from, such as Musixmatch.
+            gettext(locale, "Lyrics provided by {provider}").replace("{provider}", provider)
+        }
+        Source::Spotify { provider: None } => gettext(locale, "Lyrics from Spotify").into_owned(),
+        Source::Lrclib => gettext(locale, "Lyrics from LRCLIB").into_owned(),
+        Source::File => gettext(locale, "Lyrics from the song's file").into_owned(),
+    })
 }
 
 pub fn fullscreen(app: &mut App, ui: &mut egui::Ui) {
@@ -1004,7 +1027,37 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
 
 #[cfg(test)]
 mod tests {
-    use super::{fullscreen_content_width, preferred_backdrop_art};
+    use super::{credit, fullscreen_content_width, preferred_backdrop_art};
+
+    #[test]
+    fn the_words_credit_who_they_come_from() {
+        use crate::lyrics::{Lyrics, Source};
+        let locale = crate::i18n::Locale::English;
+        let from = |source| Lyrics {
+            source,
+            ..Lyrics::default()
+        };
+        assert_eq!(
+            credit(
+                locale,
+                &from(Some(Source::Spotify {
+                    provider: Some("Musixmatch".into())
+                }))
+            )
+            .as_deref(),
+            Some("Lyrics provided by Musixmatch")
+        );
+        assert_eq!(
+            credit(locale, &from(Some(Source::Spotify { provider: None }))).as_deref(),
+            Some("Lyrics from Spotify"),
+            "no provider is claimed when Spotify names none"
+        );
+        assert_eq!(
+            credit(locale, &from(Some(Source::Lrclib))).as_deref(),
+            Some("Lyrics from LRCLIB")
+        );
+        assert_eq!(credit(locale, &from(None)), None);
+    }
 
     #[test]
     fn fullscreen_backdrop_prefers_small_art_with_large_art_as_fallback() {

@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: Spotifast\n"
 "Report-Msgid-Bugs-To: https://github.com/crmne/spotifast/issues/new?"
 "template=translation.yml\n"
-"POT-Creation-Date: 2026-11-05 17:54-0300\n"
+"POT-Creation-Date: 2026-11-05 20:22-0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -229,7 +229,7 @@ msgstr ""
 msgid "Click to change the visualizer"
 msgstr ""
 
-#: src/ui/player_bar.rs:567 src/ui/lyrics.rs:133 src/ui/lyrics.rs:947
+#: src/ui/player_bar.rs:567 src/ui/lyrics.rs:133 src/ui/lyrics.rs:978
 #: src/ui/now_playing.rs:106
 msgid "Nothing playing"
 msgstr ""
@@ -243,12 +243,12 @@ msgid "Add to playlist"
 msgstr ""
 
 #: src/ui/player_bar.rs:745 src/ui/widgets.rs:749 src/ui/widgets.rs:1023
-#: src/ui/widgets.rs:2038 src/ui/now_playing.rs:242
+#: src/ui/widgets.rs:2057 src/ui/now_playing.rs:242
 msgid "Save to Liked Songs"
 msgstr ""
 
 #: src/ui/player_bar.rs:795 src/ui/widgets.rs:746 src/ui/widgets.rs:1020
-#: src/ui/widgets.rs:2036 src/ui/now_playing.rs:240
+#: src/ui/widgets.rs:2055 src/ui/now_playing.rs:240
 msgid "Remove from Liked Songs"
 msgstr ""
 
@@ -261,8 +261,8 @@ msgstr ""
 msgid "Previous"
 msgstr ""
 
-#: src/ui/player_bar.rs:914 src/ui/lyrics.rs:501 src/ui/widgets.rs:2862
-#: src/ui/widgets.rs:2936 src/ui/widgets.rs:2964 src/app.rs:15248
+#: src/ui/player_bar.rs:914 src/ui/lyrics.rs:532 src/ui/widgets.rs:2884
+#: src/ui/widgets.rs:2958 src/ui/widgets.rs:2986 src/app.rs:15248
 #: src/ui/collection.rs:997
 msgid "Loading…"
 msgstr ""
@@ -291,7 +291,7 @@ msgstr ""
 msgid "Playback position (%)"
 msgstr ""
 
-#: src/ui/player_bar.rs:1118 src/ui/lyrics.rs:875
+#: src/ui/player_bar.rs:1118 src/ui/lyrics.rs:906
 msgid "Leave full screen (Esc)"
 msgstr ""
 
@@ -320,15 +320,15 @@ msgid "Connect to a device"
 msgstr ""
 
 #: src/ui/player_bar.rs:1218 src/ui/queue.rs:23 src/ui/queue.rs:78
-#: src/ui/queue.rs:227
+#: src/ui/queue.rs:232
 msgid "Queue"
 msgstr ""
 
-#: src/ui/player_bar.rs:1244 src/ui/lyrics.rs:69 src/ui/lyrics.rs:864
+#: src/ui/player_bar.rs:1244 src/ui/lyrics.rs:69 src/ui/lyrics.rs:895
 msgid "Lyrics"
 msgstr ""
 
-#: src/ui/player_bar.rs:1265 src/ui/queue.rs:408 src/ui/now_playing.rs:74
+#: src/ui/player_bar.rs:1265 src/ui/queue.rs:417 src/ui/now_playing.rs:74
 msgid "Now playing"
 msgstr ""
 
@@ -336,69 +336,69 @@ msgstr ""
 msgid "Listening activity"
 msgstr ""
 
-#: src/ui/queue.rs:79 src/ui/queue.rs:228
+#: src/ui/queue.rs:79 src/ui/queue.rs:233
 msgid "Recent"
 msgstr ""
 
-#: src/ui/queue.rs:91 src/ui/queue.rs:240 src/ui/lyrics.rs:80
+#: src/ui/queue.rs:91 src/ui/queue.rs:245 src/ui/lyrics.rs:80
 #: src/ui/friends.rs:68 src/ui/mod.rs:796 src/window.rs:35
 #: src/ui/now_playing.rs:88
 msgid "Close"
 msgstr ""
 
-#: src/ui/queue.rs:299
+#: src/ui/queue.rs:304
 msgid "Save as a playlist"
 msgstr ""
 
-#: src/ui/queue.rs:316
+#: src/ui/queue.rs:320
 msgid "Clear queue"
 msgstr ""
 
-#: src/ui/queue.rs:388
+#: src/ui/queue.rs:397
 msgid "Playing from"
 msgstr ""
 
-#: src/ui/queue.rs:452
+#: src/ui/queue.rs:462
 msgid "Nothing queued"
 msgstr ""
 
-#: src/ui/queue.rs:453
+#: src/ui/queue.rs:463
 msgid "Queued songs appear here."
 msgstr ""
 
 #. Translators: Songs added manually, before the current playlist or album continues.
-#: src/ui/queue.rs:476
+#: src/ui/queue.rs:486
 msgid "Playing next"
 msgstr ""
 
 #. Translators: Upcoming songs from the current playlist or album, after manually queued songs.
-#: src/ui/queue.rs:583
+#: src/ui/queue.rs:593
 msgid "Next up"
 msgstr ""
 
-#: src/ui/queue.rs:624 src/ui/queue.rs:657 src/ui/widgets.rs:2998
+#: src/ui/queue.rs:633 src/ui/queue.rs:666 src/ui/widgets.rs:3029
 #: src/ui/collection.rs:1376 src/ui/prerelease.rs:283
 msgid "Retry"
 msgstr ""
 
-#: src/ui/queue.rs:639
+#: src/ui/queue.rs:648
 msgid "No recent plays"
 msgstr ""
 
-#: src/ui/queue.rs:640
+#: src/ui/queue.rs:649
 msgid "Played songs appear here."
 msgstr ""
 
-#: src/ui/queue.rs:718 src/ui/artist.rs:226
+#: src/ui/queue.rs:728 src/ui/artist.rs:226
 msgid "Load more"
 msgstr ""
 
-#: src/ui/lyrics.rs:104 src/ui/lyrics.rs:887
+#: src/ui/lyrics.rs:104 src/ui/lyrics.rs:918
 msgctxt "lyrics"
 msgid "Follow"
 msgstr ""
 
-#: src/ui/lyrics.rs:134 src/ui/lyrics.rs:948
+#: src/ui/lyrics.rs:134 src/ui/lyrics.rs:979
 msgid "Play a song to see its lyrics."
 msgstr ""
 
@@ -423,30 +423,30 @@ msgid "Spotifast will reconnect automatically when your connection returns."
 msgstr ""
 
 #. Translators: Keep {error} unchanged. It is the original failure detail.
-#: src/ui/lyrics.rs:173 src/ui/lyrics.rs:494 src/ui/lyrics.rs:961
+#: src/ui/lyrics.rs:173 src/ui/lyrics.rs:525 src/ui/lyrics.rs:992
 #, rust-format
 msgid "Couldn't fetch the lyrics: {error}"
 msgstr ""
 
-#: src/ui/lyrics.rs:179 src/ui/lyrics.rs:521 src/ui/lyrics.rs:967
+#: src/ui/lyrics.rs:179 src/ui/lyrics.rs:552 src/ui/lyrics.rs:998
 #: src/ui/settings.rs:432 src/ui/settings.rs:731 src/ui/soloist.rs:476
 #: src/ui/soloist.rs:695 src/ui/soloist.rs:738 src/ui/soloist.rs:953
 msgid "Try again"
 msgstr ""
 
-#: src/ui/lyrics.rs:190 src/ui/lyrics.rs:487 src/ui/lyrics.rs:978
+#: src/ui/lyrics.rs:190 src/ui/lyrics.rs:518 src/ui/lyrics.rs:1009
 msgid "No lyrics"
 msgstr ""
 
-#: src/ui/lyrics.rs:191 src/ui/lyrics.rs:488 src/ui/lyrics.rs:979
+#: src/ui/lyrics.rs:191 src/ui/lyrics.rs:519 src/ui/lyrics.rs:1010
 msgid "No lyrics found for this track."
 msgstr ""
 
-#: src/ui/lyrics.rs:200 src/ui/lyrics.rs:483 src/ui/lyrics.rs:988
+#: src/ui/lyrics.rs:200 src/ui/lyrics.rs:514 src/ui/lyrics.rs:1019
 msgid "Instrumental"
 msgstr ""
 
-#: src/ui/lyrics.rs:201 src/ui/lyrics.rs:484 src/ui/lyrics.rs:989
+#: src/ui/lyrics.rs:201 src/ui/lyrics.rs:515 src/ui/lyrics.rs:1020
 msgid "No timed lyrics for this track."
 msgstr ""
 
@@ -622,18 +622,18 @@ msgid "Go to artist radio"
 msgstr ""
 
 #. Translators: {title} is a song or episode name, {subtitle} its artists or podcast.
-#: src/ui/widgets.rs:1547
+#: src/ui/widgets.rs:1566
 #, rust-format
 msgid "Play {title}, {subtitle}"
 msgstr ""
 
-#: src/ui/widgets.rs:2083 src/ui/artist.rs:574 src/ui/collection.rs:476
+#: src/ui/widgets.rs:2102 src/ui/artist.rs:574 src/ui/collection.rs:476
 #: src/ui/show.rs:260 src/ui/show.rs:468
 msgid "More"
 msgstr ""
 
 #. Translators: The label beside the pointer while songs are dragged. {name} is the first song's name and {count} how many more songs are dragged with it.
-#: src/ui/widgets.rs:2235
+#: src/ui/widgets.rs:2257
 #, rust-format
 msgid "{name} + {count} more"
 msgid_plural "{name} + {count} more"
@@ -641,101 +641,101 @@ msgstr[0] ""
 msgstr[1] ""
 
 #. Translators: {column} is a column heading of a song list, such as Title.
-#: src/ui/widgets.rs:2353
+#: src/ui/widgets.rs:2375
 #, rust-format
 msgid "Sort by {column}"
 msgstr ""
 
-#: src/ui/widgets.rs:2403
+#: src/ui/widgets.rs:2425
 msgid "Sort by playlist order"
 msgstr ""
 
-#: src/ui/widgets.rs:2438
+#: src/ui/widgets.rs:2460
 msgid "Original order, reversed"
 msgstr ""
 
-#: src/ui/widgets.rs:2451
+#: src/ui/widgets.rs:2473
 msgctxt "column heading"
 msgid "TITLE"
 msgstr ""
 
-#: src/ui/widgets.rs:2480
+#: src/ui/widgets.rs:2502
 msgctxt "column heading"
 msgid "ALBUM"
 msgstr ""
 
-#: src/ui/widgets.rs:2489
+#: src/ui/widgets.rs:2511
 msgctxt "column heading"
 msgid "ADDED BY"
 msgstr ""
 
-#: src/ui/widgets.rs:2498
+#: src/ui/widgets.rs:2520
 msgctxt "column heading"
 msgid "DATE ADDED"
 msgstr ""
 
-#: src/ui/widgets.rs:2507
+#: src/ui/widgets.rs:2529
 msgctxt "column heading"
 msgid "PLAYS"
 msgstr ""
 
-#: src/ui/widgets.rs:2528 src/ui/widgets.rs:2558
+#: src/ui/widgets.rs:2550 src/ui/widgets.rs:2580
 msgid "Sort by duration"
 msgstr ""
 
-#: src/ui/widgets.rs:2975 src/app.rs:15457 src/app.rs:15471
+#: src/ui/widgets.rs:2997 src/app.rs:15457 src/app.rs:15471
 msgid "Network connection error. Check your connection."
 msgstr ""
 
-#: src/ui/widgets.rs:3297
+#: src/ui/widgets.rs:3328
 msgid "Cut"
 msgstr ""
 
-#: src/ui/widgets.rs:3302 src/ui/login.rs:555
+#: src/ui/widgets.rs:3333 src/ui/login.rs:555
 msgid "Copy"
 msgstr ""
 
-#: src/ui/widgets.rs:3307
+#: src/ui/widgets.rs:3338
 msgid "Paste"
 msgstr ""
 
-#: src/ui/widgets.rs:3324
+#: src/ui/widgets.rs:3355
 msgid "Select all"
 msgstr ""
 
-#: src/ui/widgets.rs:3431
+#: src/ui/widgets.rs:3462
 msgid "Clear"
 msgstr ""
 
 #. Translators: {name} is replaced by the author's name, shown as a link.
-#: src/ui/widgets.rs:3476
+#: src/ui/widgets.rs:3507
 #, rust-format
 msgid "Built with love by {name}"
 msgstr ""
 
-#: src/ui/widgets.rs:3636
+#: src/ui/widgets.rs:3667
 msgid "Host"
 msgstr ""
 
-#: src/ui/widgets.rs:3653
+#: src/ui/widgets.rs:3684
 msgid "Port"
 msgstr ""
 
-#: src/ui/widgets.rs:3671
+#: src/ui/widgets.rs:3702
 msgid "Username"
 msgstr ""
 
-#: src/ui/widgets.rs:3682
+#: src/ui/widgets.rs:3713
 msgid "Password"
 msgstr ""
 
-#: src/ui/widgets.rs:3700
+#: src/ui/widgets.rs:3731
 msgid ""
 "Proxy login applies to Web requests. Local playback uses this proxy only "
 "without a login."
 msgstr ""
 
-#: src/ui/widgets.rs:3704
+#: src/ui/widgets.rs:3735
 msgid ""
 "Spotify hostnames are resolved by the proxy. Local playback connects "
 "directly."

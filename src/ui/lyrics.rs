@@ -360,7 +360,12 @@ pub fn fullscreen(app: &mut App, ui: &mut egui::Ui) {
                 with_cover(app, ui, rect, top);
                 return;
             }
-            let width = fullscreen_content_width(rect.width());
+            let show_queue = app.show_queue_panel && rect.width() >= COVER_BESIDE_MIN_WIDTH;
+            let width = if show_queue {
+                (rect.width() - 48.0).max(0.0)
+            } else {
+                fullscreen_content_width(rect.width())
+            };
             let region = Rect::from_min_max(
                 pos2(rect.center().x - width / 2.0, rect.top() + top),
                 pos2(rect.center().x + width / 2.0, rect.bottom()),
@@ -369,6 +374,32 @@ pub fn fullscreen(app: &mut App, ui: &mut egui::Ui) {
             fullscreen_header(app, &mut content);
             let compact = rect.height() < 420.0;
             content.add_space(if compact { 8.0 } else { 20.0 });
+            if show_queue {
+                // The queue belongs to full screen, not to the large cover.
+                // Wide, short windows keep it beside the small heading.
+                let below =
+                    Rect::from_min_max(pos2(region.left(), content.cursor().top()), region.max);
+                let queue_width = app.settings.queue_width.clamp(
+                    super::queue::FULLSCREEN_COLUMN_MIN,
+                    super::queue::FULLSCREEN_COLUMN_MAX,
+                );
+                let queue_rect =
+                    Rect::from_min_max(pos2(below.right() - queue_width, below.top()), below.max);
+                let mut queue = ui.new_child(UiBuilder::new().max_rect(queue_rect));
+                super::queue::fullscreen_column(app, &mut queue);
+                let room =
+                    Rect::from_min_max(below.min, pos2(queue_rect.left() - 32.0, below.bottom()));
+                let words_width = fullscreen_content_width(room.width());
+                let words = Rect::from_min_max(
+                    pos2(room.center().x - words_width / 2.0, room.top()),
+                    pos2(room.center().x + words_width / 2.0, room.bottom()),
+                );
+                let mut words = ui.new_child(UiBuilder::new().max_rect(words));
+                track_heading(app, &mut words);
+                words.add_space(if compact { 8.0 } else { 16.0 });
+                fullscreen_contents(app, &mut words);
+                return;
+            }
             track_heading(app, &mut content);
             content.add_space(if compact { 8.0 } else { 16.0 });
             fullscreen_contents(app, &mut content);

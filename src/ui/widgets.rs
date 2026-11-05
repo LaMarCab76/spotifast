@@ -1499,6 +1499,25 @@ pub(crate) fn track_row_response(
     app: &mut App,
     row: TrackRow<'_>,
 ) -> (egui::Response, Option<RowPick>) {
+    track_row_response_with_palette(ui, app, row, app.palette)
+}
+
+/// Queue rows on the dark full-screen canvas keep that canvas's colors.
+pub(crate) fn track_row_with_palette(
+    ui: &mut Ui,
+    app: &mut App,
+    row: TrackRow<'_>,
+    palette: Palette,
+) -> Option<RowPick> {
+    track_row_response_with_palette(ui, app, row, palette).1
+}
+
+fn track_row_response_with_palette(
+    ui: &mut Ui,
+    app: &mut App,
+    row: TrackRow<'_>,
+    palette: Palette,
+) -> (egui::Response, Option<RowPick>) {
     // Virtual lists reuse the visible slots as they scroll. Keep focus and
     // accessibility actions attached to the song and its occurrence instead.
     // Now playing and Next up can both contain the same song at index zero.
@@ -1514,7 +1533,7 @@ pub(crate) fn track_row_response(
             .unwrap_or(row.index),
     ));
     ui.scope_builder(UiBuilder::new().id(id), |ui| {
-        track_row_contents(ui, app, row)
+        track_row_contents(ui, app, row, palette)
     })
     .inner
 }
@@ -1523,8 +1542,8 @@ fn track_row_contents(
     ui: &mut Ui,
     app: &mut App,
     row: TrackRow<'_>,
+    palette: Palette,
 ) -> (egui::Response, Option<RowPick>) {
-    let palette = app.palette;
     let row_height = if row.thin {
         theme::THIN_ROW_HEIGHT
     } else if row.compact {
@@ -2084,8 +2103,9 @@ fn track_row_contents(
         );
         egui::Popup::menu(&more)
             .id(menu_id)
-            .frame(menu_frame(&palette))
+            .frame(menu_frame(&app.palette))
             .show(|ui| {
+                theme::apply_local(ui, &app.palette);
                 item_menu_at(
                     ui,
                     app,
@@ -2146,8 +2166,10 @@ fn track_row_contents(
         }
     }
     egui::Popup::context_menu(&response)
-        .frame(menu_frame(&palette))
+        .frame(menu_frame(&app.palette))
         .show(|ui| {
+            // Menus and their submenus use the app theme, even on a dark canvas.
+            theme::apply_local(ui, &app.palette);
             // Right-clicking one of several picked rows acts on all of
             // them; on anything else it is the ordinary single-song menu,
             // including a picked row that is the only one picked.
@@ -2979,7 +3001,16 @@ pub fn sanitize_error_message<'a>(message: &'a str, locale: Locale) -> std::borr
 }
 
 pub fn error_row(ui: &mut Ui, app: &mut App, message: &str, retry: Option<Page>) {
-    let palette = app.palette;
+    error_row_with_palette(ui, app, message, retry, app.palette);
+}
+
+pub(crate) fn error_row_with_palette(
+    ui: &mut Ui,
+    app: &mut App,
+    message: &str,
+    retry: Option<Page>,
+    palette: Palette,
+) {
     let sanitized = sanitize_error_message(message, app.locale);
     ui.horizontal(|ui| {
         ui.add_space(8.0);

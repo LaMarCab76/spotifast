@@ -8,7 +8,7 @@ use crate::api::models::PlayableItem;
 use crate::app::App;
 use crate::i18n::{Locale, gettext};
 use crate::model::{Action, DragTrack, Loadable, QueueTab, RowContext};
-use crate::theme::{self, Icon};
+use crate::theme::{self, Icon, Palette};
 
 use super::widgets::{self, TrackRow};
 
@@ -31,7 +31,7 @@ pub fn page(app: &mut App, ui: &mut egui::Ui) {
         });
     });
     ui.add_space(12.0);
-    contents(app, ui, false);
+    contents(app, ui, false, palette);
 }
 
 pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
@@ -127,8 +127,8 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                 }),
             egui::Vec2b::new(false, true),
             |ui| match app.queue_tab {
-                QueueTab::Queue => contents(app, ui, true),
-                QueueTab::Recents => recents_contents(app, ui),
+                QueueTab::Queue => contents(app, ui, true, palette),
+                QueueTab::Recents => recents_contents(app, ui, palette),
             },
         );
     });
@@ -163,7 +163,12 @@ pub(crate) fn fullscreen_column_drag_width(saved: f32, delta_x: f32) -> f32 {
 /// the side panel, without the resizable panel chrome. The caller provides
 /// the rect; everything here draws inside it.
 pub fn fullscreen_column(app: &mut App, ui: &mut egui::Ui) {
-    let palette = app.palette;
+    // Full-screen lyrics keep a dark canvas even in a light app theme.
+    let palette = Palette {
+        accent: app.palette.accent,
+        accent_hover: app.palette.accent_hover,
+        ..Palette::dark()
+    };
     // Drag strip on the column's left edge: same persisted width the side
     // panel uses, so both follow each resize. Explicit id, stable across
     // frames for the whole drag gesture.
@@ -276,8 +281,8 @@ pub fn fullscreen_column(app: &mut App, ui: &mut egui::Ui) {
             }),
         egui::Vec2b::new(false, true),
         |ui| match app.queue_tab {
-            QueueTab::Queue => contents(app, ui, true),
-            QueueTab::Recents => recents_contents(app, ui),
+            QueueTab::Queue => contents(app, ui, true, palette),
+            QueueTab::Recents => recents_contents(app, ui, palette),
         },
     );
 }
@@ -302,11 +307,10 @@ fn save_button(
 }
 
 /// Clears manual rows from the active local queue.
-fn clear_button(app: &mut App, ui: &mut egui::Ui) {
+fn clear_button(app: &mut App, ui: &mut egui::Ui, palette: Palette) {
     if !app.can_clear_queue() {
         return;
     }
-    let palette = app.palette;
     if theme::icon_button(
         ui,
         Icon::Trash,
@@ -337,8 +341,7 @@ fn queue_drop(ui: &egui::Ui, rect: egui::Rect) -> Option<Arc<DragTrack>> {
 /// section's heading.
 const SECTION_GAP: f32 = 14.0;
 
-fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
-    let palette = app.palette;
+fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool, palette: Palette) {
     // Neither the Web API nor librespot can reorder or insert into a live
     // remote queue, so without local playback active every drop just
     // appends, same as the "Add to queue" menu item.
@@ -360,7 +363,13 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
         }
         Loadable::Failed(error) => {
             let error = error.clone();
-            widgets::error_row(ui, app, &error, Some(crate::model::Page::Queue));
+            widgets::error_row_with_palette(
+                ui,
+                app,
+                &error,
+                Some(crate::model::Page::Queue),
+                palette,
+            );
             return;
         }
     };
@@ -411,7 +420,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
         );
         ui.add_space(4.0);
         let context = RowContext::Uris(Arc::from([current.uri().to_string()]));
-        widgets::track_row(
+        widgets::track_row_with_palette(
             ui,
             app,
             TrackRow {
@@ -433,6 +442,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
                 picked_positions: &[],
                 position: None,
             },
+            palette,
         );
         ui.add_space(SECTION_GAP);
     }
@@ -479,7 +489,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
                 palette.text,
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                clear_button(app, ui);
+                clear_button(app, ui, palette);
             });
         });
         ui.add_space(4.0);
@@ -525,7 +535,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
                 },
                 crate::motion::seconds(ui.ctx(), 0.12),
             );
-            queue_row(app, ui, index, compact, shift);
+            queue_row(app, ui, index, compact, shift, palette);
             ui.allocate_space(egui::vec2(width, gap));
         });
         if let Some(slot) = move_slot {
@@ -587,7 +597,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
         );
         ui.add_space(4.0);
         widgets::virtual_rows(ui, queue_len - queued_len, row_height, |ui, index| {
-            queue_row(app, ui, queued_len + index, compact, 0.0);
+            queue_row(app, ui, queued_len + index, compact, 0.0, palette);
         });
     }
 }
@@ -596,8 +606,7 @@ fn queue_is_empty(app: &App) -> bool {
     app.queue.get().is_none_or(|queue| queue.queue.is_empty())
 }
 
-fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
-    let palette = app.palette;
+fn recents_contents(app: &mut App, ui: &mut egui::Ui, palette: Palette) {
     // Share the rows to avoid borrow issues while drawing. The rows are both
     // histories as one: what was played here, which Spotify is never told
     // about, and what Spotify knows of every other device.
@@ -672,7 +681,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
         // Need owned PlayableItem for track_row; clone track.
         let item = PlayableItem::Track(entry.track.clone());
         let context = RowContext::Uris(Arc::from([entry.track.uri.clone()]));
-        widgets::track_row(
+        widgets::track_row_with_palette(
             ui,
             app,
             TrackRow {
@@ -694,6 +703,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
                 picked_positions: &[],
                 position: None,
             },
+            palette,
         );
     });
 
@@ -728,7 +738,14 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
 /// One row of the queue, numbered and indexed by its place in the whole
 /// queue, whichever section it sits in. `shift` parts rows around the slot
 /// a dragged row would land in, in the "Playing next" section only.
-fn queue_row(app: &mut App, ui: &mut egui::Ui, index: usize, compact: bool, shift: f32) {
+fn queue_row(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    index: usize,
+    compact: bool,
+    shift: f32,
+    palette: Palette,
+) {
     let Some(item) = app
         .queue
         .get()
@@ -737,7 +754,7 @@ fn queue_row(app: &mut App, ui: &mut egui::Ui, index: usize, compact: bool, shif
     else {
         return;
     };
-    widgets::track_row(
+    widgets::track_row_with_palette(
         ui,
         app,
         TrackRow {
@@ -759,5 +776,6 @@ fn queue_row(app: &mut App, ui: &mut egui::Ui, index: usize, compact: bool, shif
             picked_positions: &[],
             position: None,
         },
+        palette,
     );
 }

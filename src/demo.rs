@@ -2106,6 +2106,236 @@ mod tests {
 
     #[cfg(feature = "demo")]
     #[test]
+    fn compact_full_screen_keeps_the_queue_visible_and_toggleable() {
+        use crate::settings::LyricsVisualizer;
+        for (width, height) in [(1280.0, 600.0), (1280.0, 520.0), (900.0, 520.0)] {
+            for mode in [LyricsVisualizer::Integrated, LyricsVisualizer::Strip] {
+                for saved_width in [240.0, 520.0] {
+                    let (ctx, mut app) = accessible_app("compact-fullscreen-queue");
+                    app.backend.set_offline(true);
+                    apply_flags(
+                        &mut app,
+                        None,
+                        Some("lyrics-fullscreen-view,player-bar-spectrum,queue"),
+                    );
+                    app.settings.lyrics_presentation.visualizer = mode;
+                    app.settings.queue_width = saved_width;
+                    let mut frame = 0;
+                    let mut draw = |app: &mut App| {
+                        let mut output = ctx.run_ui(
+                            egui::RawInput {
+                                time: Some(f64::from(frame) / 30.0),
+                                screen_rect: Some(egui::Rect::from_min_size(
+                                    egui::Pos2::ZERO,
+                                    egui::vec2(width, height),
+                                )),
+                                ..Default::default()
+                            },
+                            |ui| app.frame_ui(ui),
+                        );
+                        frame += 1;
+                        output.textures_delta.clear();
+                        output.shapes
+                    };
+                    let id = egui::Id::new("queue-column-resize");
+                    draw(&mut app);
+                    let shapes = draw(&mut app);
+                    let column = ctx
+                        .read_response(id)
+                        .expect("open queue has a drawn column")
+                        .rect;
+                    assert!(column.height() > 100.0 && column.left() >= 24.0);
+                    assert!(column.bottom() <= height - crate::theme::PLAYER_BAR_HEIGHT);
+                    assert!(shapes.iter().any(|shape| matches!(&shape.shape,
+                        egui::Shape::Text(text) if text.galley.job.text == "Queue" && text.pos.x > column.left())),
+                        "queue heading is drawn at {width}x{height}, {mode:?}");
+                    assert_eq!(
+                        app.settings.queue_width, saved_width,
+                        "clamping does not overwrite the saved width"
+                    );
+                    app.apply(Action::ToggleQueuePanel, &ctx);
+                    draw(&mut app);
+                    draw(&mut app);
+                    assert!(
+                        ctx.read_response(id).is_none(),
+                        "closing removes the queue column"
+                    );
+                    assert!(app.lyrics_fullscreen.is_some());
+                    app.apply(Action::ToggleQueuePanel, &ctx);
+                    draw(&mut app);
+                    draw(&mut app);
+                    assert!(
+                        ctx.read_response(id).is_some(),
+                        "reopening restores the queue column"
+                    );
+                    assert_eq!(app.settings.queue_width, saved_width);
+                    app.backend.shutdown();
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "demo")]
+    #[test]
+    fn fullscreen_queue_text_reads_on_the_dark_canvas_in_both_app_themes() {
+        for theme in ["dark", "light"] {
+            for (height, strip) in [(800.0, false), (600.0, true)] {
+                for tab in [QueueTab::Queue, QueueTab::Recents] {
+                    let (ctx, mut app) = accessible_app("fullscreen-queue-contrast");
+                    app.backend.set_offline(true);
+                    let mut flags =
+                        format!("lyrics-fullscreen-view,player-bar-spectrum,queue,{theme}");
+                    if strip {
+                        flags.push_str(",lyrics-strip");
+                    }
+                    apply_flags(&mut app, None, Some(&flags));
+                    app.queue_tab = tab;
+                    app.recents_view = Arc::from([]);
+                    app.recents.loaded_once = true;
+                    app.recents.complete = true;
+                    app.recents.loading = false;
+                    let mut output = None;
+                    for _ in 0..2 {
+                        let mut frame = ctx.run_ui(
+                            egui::RawInput {
+                                screen_rect: Some(egui::Rect::from_min_size(
+                                    egui::Pos2::ZERO,
+                                    egui::vec2(1280.0, height),
+                                )),
+                                ..Default::default()
+                            },
+                            |ui| app.frame_ui(ui),
+                        );
+                        frame.textures_delta.clear();
+                        output = Some(frame);
+                    }
+                    let left = ctx
+                        .read_response(egui::Id::new("queue-column-resize"))
+                        .unwrap()
+                        .rect
+                        .left();
+                    let output = output.unwrap();
+                    let palette = crate::theme::Palette::dark();
+                    let expected = if tab == QueueTab::Queue {
+                        [
+                            ("Now playing", palette.text),
+                            ("Otomo", palette.text),
+                            ("Khruangbin", palette.secondary),
+                        ]
+                    } else {
+                        [
+                            ("No recent plays", palette.text),
+                            ("Played songs appear here.", palette.secondary),
+                            ("Recent", palette.window),
+                        ]
+                    };
+                    // The selected chip's text is dark on its white fill.
+                    for (label, color) in expected {
+                        assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+                            egui::Shape::Text(text) if text.pos.x > left
+                                && text.galley.job.text == label
+                                && text.galley.job.sections.first().is_some_and(|section| section.format.color == color))),
+                            "{label} keeps canvas colors with {theme}, {height}, {tab:?}");
+                    }
+                    assert_eq!(
+                        app.palette.dark,
+                        theme == "dark",
+                        "the app theme is preserved"
+                    );
+                    app.backend.shutdown();
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "demo")]
+    #[test]
+    fn fullscreen_queue_context_menus_keep_matching_frame_and_text_colors() {
+        fn has_frame(shape: &egui::Shape, point: egui::Pos2, fill: egui::Color32) -> bool {
+            match shape {
+                egui::Shape::Rect(rect) => rect.rect.contains(point) && rect.fill == fill,
+                egui::Shape::Vec(shapes) => {
+                    shapes.iter().any(|shape| has_frame(shape, point, fill))
+                }
+                _ => false,
+            }
+        }
+        for theme in ["dark", "light"] {
+            for tab in [QueueTab::Queue, QueueTab::Recents] {
+                let (ctx, mut app) = accessible_app("fullscreen-queue-menu-contrast");
+                app.backend.set_offline(true);
+                let flags = format!(
+                    "lyrics-fullscreen-view,player-bar-spectrum,lyrics-strip,queue,{theme}"
+                );
+                apply_flags(&mut app, None, Some(&flags));
+                app.queue_tab = tab;
+                app.recents.items = vec![PlayHistory {
+                    track: track(1),
+                    ..Default::default()
+                }];
+                app.recents_view = Arc::from(app.recents.items.clone());
+                app.recents.complete = true;
+                let mut time = 0.0;
+                let mut draw = |app: &mut App, events| {
+                    time += 0.2;
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(1280.0, 600.0),
+                            )),
+                            time: Some(time),
+                            events,
+                            ..Default::default()
+                        },
+                        |ui| app.frame_ui(ui),
+                    );
+                    output.textures_delta.clear();
+                    output
+                };
+                draw(&mut app, vec![]);
+                let output = draw(&mut app, vec![]);
+                let row = menu_text(&output)
+                    .into_iter()
+                    .find(|(label, rect)| label == "Otomo" && rect.left() > 850.0)
+                    .expect("the queue or recent row")
+                    .1;
+                draw(
+                    &mut app,
+                    pointer_click(row.center(), egui::PointerButton::Secondary),
+                );
+                draw(&mut app, vec![]);
+                let output = draw(&mut app, vec![]);
+                let menu_item = output
+                    .shapes
+                    .iter()
+                    .find_map(|shape| match &shape.shape {
+                        egui::Shape::Text(text) if text.galley.job.text == "Add to queue" => {
+                            Some(text)
+                        }
+                        _ => None,
+                    })
+                    .expect("the row context menu opens");
+                assert_eq!(
+                    menu_item.galley.job.sections[0].format.color,
+                    app.palette.text
+                );
+                let point = menu_item.pos + menu_item.galley.size() / 2.0;
+                assert!(
+                    output.shapes.iter().any(|shape| has_frame(
+                        &shape.shape,
+                        point,
+                        app.palette.overlay
+                    )),
+                    "the menu frame matches its text in {theme}, {tab:?}"
+                );
+                app.backend.shutdown();
+            }
+        }
+    }
+
+    #[cfg(feature = "demo")]
+    #[test]
     fn full_screen_progress_spans_the_window_in_both_visualizer_modes() {
         use crate::settings::LyricsVisualizer;
         for width in [760.0, 900.0, 1280.0, 1920.0] {

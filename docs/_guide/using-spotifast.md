@@ -906,7 +906,10 @@ not add a new service or request whether you follow an artist.
 The full-screen player has its seek bar across the window, with controls in a
 separate row above it. **Full screen visualizer** places the selected spectrum
 or waveform either **Inside the player bar** or in a **Compact strip above**.
-The strip reserves its own space, leaving lyrics and seeking unobstructed.
+The strip reserves its own space, leaving lyrics and seeking unobstructed. An open
+queue keeps its column in wide full-screen windows even when the height is
+limited. The queue uses light text on the full-screen background in either app
+theme.
 The dedicated immersive MilkDrop view keeps its existing player layout.
 
 Press **V** in full screen lyrics, or click anywhere that isn't a line of

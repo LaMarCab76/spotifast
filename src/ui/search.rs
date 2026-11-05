@@ -19,15 +19,24 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
     ui.add_space(4.0);
+    let podcasts = app.settings.show_podcasts;
+    // With podcasts left out, a Podcasts or Episodes tab chosen before
+    // shows everything else.
+    let selected = if podcasts || !app.search.filter.is_podcasts() {
+        app.search.filter
+    } else {
+        SearchFilter::All
+    };
     let labels: Vec<_> = SearchFilter::ALL
         .iter()
+        .filter(|f| podcasts || !f.is_podcasts())
         .map(|f| (*f, f.label(app.locale)))
         .collect();
     let options: Vec<(SearchFilter, &str)> = labels
         .iter()
         .map(|(filter, label)| (*filter, label.as_ref()))
         .collect();
-    if let Some(filter) = widgets::chips(ui, &palette, &options, app.search.filter) {
+    if let Some(filter) = widgets::chips(ui, &palette, &options, selected) {
         app.actions.push(Action::SetSearchFilter(filter));
     }
     ui.add_space(12.0);
@@ -38,7 +47,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     if let Some(error) = app.search.error.clone() {
         widgets::error_row(ui, app, &error, None);
     }
-    let results = match &app.search.results {
+    let mut results = match &app.search.results {
         Loadable::Loaded(results) => results.clone(),
         Loadable::Loading | Loadable::NotLoaded => {
             if !pending {
@@ -54,6 +63,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             return;
         }
     };
+    if !podcasts {
+        results.shows = None;
+        results.episodes = None;
+    }
     if results.is_empty() && (pending || app.search.error.is_some()) {
         return;
     }
@@ -69,7 +82,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         );
         return;
     }
-    match app.search.filter {
+    match selected {
         SearchFilter::All => all(app, ui, &results),
         SearchFilter::Songs => songs(app, ui, &results, usize::MAX),
         SearchFilter::Artists => artists_grid(app, ui, &results),

@@ -1201,6 +1201,7 @@ impl App {
             .as_deref()
             .and_then(Page::decode)
             .filter(|page| !matches!(page, Page::Settings | Page::Queue))
+            .filter(|page| settings.show_podcasts || !page.is_podcast_library())
             .unwrap_or(Page::Home);
 
         let palette = settings.fixed_palette().unwrap_or_else(Palette::dark);
@@ -6579,8 +6580,16 @@ impl App {
         });
         self.load_made_for_you(force);
         self.load_new_releases();
-        // The podcast shelf reads from the saved shows. The first page of
-        // them is the one the Podcasts shelf of the library asks for.
+        self.load_home_podcasts();
+    }
+
+    /// The podcast shelf reads from the saved shows. The first page of them
+    /// is the one the Podcasts shelf of the library asks for. Nothing is
+    /// asked for while podcasts are left out.
+    fn load_home_podcasts(&mut self) {
+        if !self.settings.show_podcasts {
+            return;
+        }
         if self.library.shows.loaded_once {
             self.request_home_episodes();
         } else if !self.library.shows.loading && self.library.shows.error.is_none() {
@@ -6710,7 +6719,8 @@ impl App {
     /// once per Home refresh. Known audiobooks are skipped: librespot cannot
     /// play them.
     fn request_home_episodes(&mut self) {
-        if self.home.podcasts_generation == self.home.generation {
+        // Left out, the shelf is asked for once podcasts show again.
+        if !self.settings.show_podcasts || self.home.podcasts_generation == self.home.generation {
             return;
         }
         self.home.podcasts_generation = self.home.generation;
@@ -10335,7 +10345,11 @@ impl App {
 
     /// Merges local and Spotify history for the Recent tab.
     fn rebuild_recents(&mut self) {
-        self.recents_view = crate::history::merged(self.plays.plays(), &self.recents.items).into();
+        let mut merged = crate::history::merged(self.plays.plays(), &self.recents.items);
+        if !self.settings.show_podcasts {
+            merged.retain(|play| !play.track.uri.starts_with("spotify:episode:"));
+        }
+        self.recents_view = merged.into();
     }
 
     /// Adds a page of play history to the Recents tab.
@@ -13413,6 +13427,21 @@ impl App {
             Action::SetLibraryByYou(by_you) => {
                 self.settings.library_by_you = by_you;
                 self.mark_settings_dirty();
+            }
+            Action::SetShowPodcasts(show) => {
+                if self.settings.show_podcasts != show {
+                    self.settings.show_podcasts = show;
+                    self.mark_settings_dirty();
+                    self.rebuild_recents();
+                    if !show && self.page().is_podcast_library() {
+                        self.open(Page::Home);
+                    }
+                    // Home left its podcasts out; ask for them once it has
+                    // loaded at all.
+                    if show && self.home.generation != 0 {
+                        self.load_home_podcasts();
+                    }
+                }
             }
             Action::SetLibrarySort { shelf, sort } => {
                 if sort.supports(shelf) {
@@ -25645,6 +25674,63 @@ mod tests {
     /// Home's podcast shelf reads a bounded number of saved shows once per
     /// Home refresh, skips known audiobooks, and keeps what it shows until
     /// the current refresh answers.
+    #[test]
+    fn podcasts_left_out_are_not_asked_for_until_they_show_again() {
+        use crate::api::models::{Page as ApiPage, PlayHistory, SavedShow, Track};
+        let mut app = test_app("home-podcasts-left-out");
+        let ctx = egui::Context::default();
+        app.settings.show_podcasts = false;
+        app.load_home(false);
+        assert!(!app.library.shows.loading, "Home skips the saved shows");
+        assert!(app.backend.take_home_episode_requests().is_empty());
+
+        let play = |uri: &str| PlayHistory {
+            track: Track {
+                uri: uri.into(),
+                ..Track::default()
+            },
+            played_at: Some("2026-11-04T10:00:00Z".into()),
+            context: None,
+        };
+        app.recents.items = vec![play("spotify:track:song"), play("spotify:episode:talk")];
+        app.rebuild_recents();
+        let uris = |app: &App| -> Vec<String> {
+            app.recents_view
+                .iter()
+                .map(|play| play.track.uri.clone())
+                .collect()
+        };
+        assert_eq!(uris(&app), ["spotify:track:song"]);
+
+        app.apply(Action::SetShowPodcasts(true), &ctx);
+        assert!(app.settings.show_podcasts);
+        assert!(app.library.shows.loading, "Home asks for them again");
+        assert_eq!(uris(&app).len(), 2, "Recents has its episode back");
+        app.handle_api(ApiResponse::SavedShows {
+            offset: 0,
+            result: Ok(ApiPage {
+                items: vec![SavedShow {
+                    show: Show {
+                        id: "s0".into(),
+                        uri: "spotify:show:s0".into(),
+                        ..Show::default()
+                    },
+                    ..SavedShow::default()
+                }],
+                total: 1,
+                limit: 50,
+                offset: 0,
+                next: None,
+            }),
+        });
+        assert_eq!(app.backend.take_home_episode_requests().len(), 1);
+
+        app.open(Page::Podcasts);
+        app.apply(Action::SetShowPodcasts(false), &ctx);
+        assert_eq!(*app.page(), Page::Home, "the emptied page gives way");
+        app.backend.shutdown();
+    }
+
     #[test]
     fn home_reads_a_few_saved_podcasts_once_per_refresh() {
         use crate::api::models::{Episode, Page as ApiPage, SavedShow};

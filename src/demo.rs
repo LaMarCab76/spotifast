@@ -3307,6 +3307,61 @@ mod tests {
     /// Spotify lists audiobooks among saved shows, but librespot can't play
     /// them, so the Podcasts shelf leaves out any show marked as one.
     #[test]
+    fn podcasts_left_out_leave_the_sidebar_home_and_search() {
+        let (ctx, mut app) = accessible_app("podcasts-left-out");
+        let has = |painted: &[(String, egui::Rect)], text: &str| {
+            painted.iter().any(|(label, _)| label == text)
+        };
+        let sidebar = crate::ui::sidebar::show;
+        view_frame(&ctx, &mut app, vec![], sidebar);
+        assert!(has(
+            &view_frame(&ctx, &mut app, vec![], sidebar),
+            "Podcasts"
+        ));
+        let home = crate::ui::home::show;
+        view_frame(&ctx, &mut app, vec![], home);
+        assert!(has(
+            &view_frame(&ctx, &mut app, vec![], home),
+            "Your podcasts"
+        ));
+
+        app.settings.show_podcasts = false;
+        let painted = view_frame(&ctx, &mut app, vec![], sidebar);
+        assert!(!has(&painted, "Podcasts"));
+        assert!(has(&painted, "Playlists"));
+        assert!(!has(
+            &view_frame(&ctx, &mut app, vec![], home),
+            "Your podcasts"
+        ));
+
+        app.open(Page::Search);
+        let Loadable::Loaded(results) = &app.search.results else {
+            panic!("demo search results");
+        };
+        let show = results
+            .shows
+            .as_ref()
+            .and_then(|page| page.items.first())
+            .expect("demo shows")
+            .name
+            .clone();
+        app.search.filter = SearchFilter::Podcasts;
+        search_frame(&ctx, &mut app, vec![]);
+        let painted = search_frame(&ctx, &mut app, vec![]);
+        for left_out in ["Podcasts", "Episodes", show.as_str()] {
+            assert!(!has(&painted, left_out), "{left_out}");
+        }
+        assert!(has(&painted, "Songs"), "the other tabs stay");
+
+        app.settings.show_podcasts = true;
+        app.search.filter = SearchFilter::All;
+        search_frame(&ctx, &mut app, vec![]);
+        let painted = search_frame(&ctx, &mut app, vec![]);
+        assert!(has(&painted, "Podcasts") && has(&painted, &show));
+        app.backend.shutdown();
+    }
+
+    #[test]
     fn the_podcasts_shelf_leaves_out_audiobooks() {
         let (ctx, mut app) = accessible_app("library-podcasts-audiobooks");
         let view = crate::ui::sidebar::show;

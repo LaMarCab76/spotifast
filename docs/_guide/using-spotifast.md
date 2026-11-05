@@ -81,6 +81,16 @@ open the podcast, or use its play button to play the episode. An episode you
 have started continues from where you left it. The same is true of Play on a
 podcast page, a saved episode, or a search result.
 
+### Leaving podcasts out
+
+Turn off **Podcasts and audiobooks** in Settings, under Appearance, to browse
+music only. The library's Podcasts shelf, the Your podcasts shelf and podcast
+tiles on Home, the Podcasts and Episodes tabs and results in search, and
+episodes in the queue's Recent tab are left out, and Home stops asking Spotify
+for your saved podcasts. An episode that is playing keeps playing, the queue and playlists
+still show the episodes in them, and a podcast link still opens its page.
+Turn it back on and everything returns as it was.
+
 ## Dragging beyond the visible list
 
 Since 0.8.0, hold a dragged song near the top or

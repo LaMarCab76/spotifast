@@ -52,7 +52,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     }
     new_releases(app, ui);
     recently_played(app, ui);
-    podcasts(app, ui);
+    if app.settings.show_podcasts {
+        podcasts(app, ui);
+    }
     top_artists(app, ui);
     top_tracks(app, ui);
     if app.settings.home.recommendations.visible {
@@ -144,6 +146,9 @@ fn quick_access_tiles(app: &App) -> Vec<Tile> {
                     owned_playlist: None,
                     song: None,
                 })
+            }
+            Some((uri, _)) if uri.starts_with("spotify:show:") && !app.settings.show_podcasts => {
+                None
             }
             Some((uri, id)) if uri.starts_with("spotify:show:") => {
                 app.known_show(id).map(|show| Tile {

@@ -1236,6 +1236,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let accent_from_art = gettext(locale, "Colour from album art");
     let sidebar_compact = gettext(locale, "Compact library sidebar");
     let tracklist_compact = gettext(locale, "Compact track list");
+    let show_podcasts = gettext(locale, "Podcasts and audiobooks");
     let middle_click = gettext(locale, "Middle-click autoscroll");
     let custom_titlebar = gettext(locale, "Custom title bar");
     let show_custom_titlebar = cfg!(target_os = "linux") || app.windows_controls_visible();
@@ -1356,6 +1357,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ),
         pair_row(fastframe_theme::Base::Light),
         pair_row(fastframe_theme::Base::Dark),
+        RowText::new(
+            show_podcasts.clone(),
+            gettext(
+                locale,
+                "Show podcasts and audiobooks in your library, Home, search and the Recent tab. What is playing keeps playing.",
+            ),
+        ),
     ];
     for index in [8, 9, 10] {
         appearance_rows[index].available &= visualizers;
@@ -1624,6 +1632,19 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     .changed()
                     {
                         changed = true;
+                    }
+                },
+            );
+            filtered_row(
+                ui,
+                &palette,
+                &needle,
+                &appearance,
+                &appearance_rows[13],
+                |ui| {
+                    let mut show = app.settings.show_podcasts;
+                    if widgets::switch(ui, &palette, &show_podcasts, &mut show).changed() {
+                        app.actions.push(Action::SetShowPodcasts(show));
                     }
                 },
             );

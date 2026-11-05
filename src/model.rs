@@ -130,6 +130,12 @@ pub enum Page {
 }
 
 impl Page {
+    /// The library's own podcast and episode lists, which have nothing to
+    /// show while podcasts are left out.
+    pub fn is_podcast_library(&self) -> bool {
+        matches!(self, Page::Podcasts | Page::Episodes)
+    }
+
     pub fn encode(&self) -> String {
         match self {
             Page::Home => "home".into(),
@@ -797,6 +803,11 @@ impl SearchFilter {
         Self::Episodes,
     ];
 
+    /// The tabs that only list podcasts and their episodes.
+    pub fn is_podcasts(self) -> bool {
+        matches!(self, Self::Podcasts | Self::Episodes)
+    }
+
     pub fn label(self, locale: crate::i18n::Locale) -> std::borrow::Cow<'static, str> {
         use crate::i18n::{gettext, pgettext};
         match self {
@@ -1383,6 +1394,8 @@ pub enum Action {
     SetPairTheme(fastframe_theme::Base, Option<String>),
     ReloadThemes,
     SetLibraryByYou(bool),
+    /// Show or leave out podcasts and audiobooks wherever one browses.
+    SetShowPodcasts(bool),
     SetLibrarySort {
         shelf: crate::settings::LibraryShelf,
         sort: crate::settings::LibrarySort,

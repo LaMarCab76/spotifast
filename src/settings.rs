@@ -330,6 +330,9 @@ pub struct Settings {
     pub sidebar_compact: bool,
     /// Show the Library as responsive cover cards instead of rows.
     pub sidebar_grid: bool,
+    /// Podcasts and audiobooks in the library, Home, search and Recents.
+    /// Off leaves them out wherever one browses; what plays still plays.
+    pub show_podcasts: bool,
     pub sidebar_width: f32,
     pub lyrics_width: f32,
     pub queue_width: f32,
@@ -516,6 +519,7 @@ impl Default for Settings {
             art_expanded: false,
             sidebar_compact: false,
             sidebar_grid: false,
+            show_podcasts: true,
             sidebar_width: 250.0,
             lyrics_width: 360.0,
             queue_width: 360.0,
@@ -1412,6 +1416,20 @@ mod tests {
         let json = serde_json::to_string(&settings).unwrap();
         let restored: Settings = serde_json::from_str(&json).unwrap();
         assert!(!restored.sidebar_visible);
+    }
+
+    #[test]
+    fn podcasts_show_unless_left_out() {
+        assert!(Settings::default().show_podcasts);
+        let older: Settings = serde_json::from_str("{}").unwrap();
+        assert!(older.show_podcasts, "files from before keep their podcasts");
+        let left_out = Settings {
+            show_podcasts: false,
+            ..Settings::default()
+        };
+        let json = serde_json::to_string(&left_out).unwrap();
+        let read: Settings = serde_json::from_str(&json).unwrap();
+        assert!(!read.show_podcasts);
     }
 
     #[test]

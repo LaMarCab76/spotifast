@@ -148,6 +148,10 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
                 key(Modifiers::NONE, Key::Q, Action::ToggleQueuePanel);
             }
             key(Modifiers::NONE, Key::L, Action::ToggleLyricsPanel);
+            // In full screen lyrics, N is MilkDrop's next preset.
+            if app.lyrics_fullscreen.is_none() {
+                key(Modifiers::NONE, Key::N, Action::ToggleNowPlayingPanel);
+            }
             key(Modifiers::NONE, Key::Slash, Action::FocusSearch);
             key(
                 Modifiers::NONE,
@@ -303,6 +307,7 @@ pub fn shortcuts(locale: Locale) -> Vec<(Cow<'static, str>, Cow<'static, str>)> 
         (keys("R"), gettext(locale, "Cycle repeat")),
         (keys("Q"), gettext(locale, "Show the queue")),
         (keys("L"), gettext(locale, "Show the lyrics")),
+        (keys("N"), gettext(locale, "Show what is playing")),
         (keys("F"), gettext(locale, "Full screen lyrics")),
         #[cfg(feature = "milkdrop")]
         (

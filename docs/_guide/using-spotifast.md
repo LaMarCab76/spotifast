@@ -229,12 +229,30 @@ podcast again instead of reusing the episodes loaded earlier, so new
 episodes appear without restarting Spotifast. The episodes already shown
 stay until the new list arrives.
 
+## Now playing
+
+The **Now playing** button in the player bar, or `N`, opens the playing song
+beside the page, as Spotify's own app does. The panel is named after where the
+songs come from, and shows the cover at its full width, the title and artists
+with the heart to like the song, an **About the artist** card for the first
+artist with their portrait, monthly listeners, the start of their biography
+and a Follow button, every artist the song credits when there are several, and
+the song **Next in queue**, with **Open queue** for the rest. Click the cover
+or the title for the album, and an artist for their page. The portrait,
+biography and monthly listeners need local playback signed in; without it the
+card shows what the library already knows. An episode shows its podcast
+instead, and a local file only its tags. Now playing takes the place of the
+queue, lyrics and listening activity, shares the queue's width, and comes back
+after a restart if it was open. While it is open, the cover docked at the
+bottom of the Library sidebar stays hidden.
+
 ## Side panels on the left or the right
 
-The queue, lyrics and listening activity open beside the page, on the right by
-default, and the Library sidebar sits on the other side. Choose **Left** for
-**Side panels** in Settings, under Appearance, to swap them: the panels open on
-the left and the Library moves to the right. Each keeps the width you gave it.
+Now playing, the queue, lyrics and listening activity open beside the page, on
+the right by default, and the Library sidebar sits on the other side. Choose
+**Left** for **Side panels** in Settings, under Appearance, to swap them: the
+panels open on the left and the Library moves to the right. Each keeps the
+width you gave it.
 
 ## Playing from the sidebar
 
@@ -341,6 +359,8 @@ Winamp skins do not yet have equivalent accessibility coverage.
 | `B` | Like or unlike the playing song |
 | `S` / `R` | Shuffle / cycle repeat |
 | `Q` | Queue panel, or the queue column in full screen |
+| `L` | Lyrics panel |
+| `N` | Now playing panel |
 | `F` | Enter or leave full screen lyrics |
 | `V` | Full screen lyrics: MilkDrop or the cover's art behind the words |
 | `N` / `P` | Full screen lyrics: next or previous MilkDrop preset |

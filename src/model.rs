@@ -1394,6 +1394,8 @@ pub enum Action {
     SetPairTheme(fastframe_theme::Base, Option<String>),
     ReloadThemes,
     SetLibraryByYou(bool),
+    /// The playing song, large, beside the page.
+    ToggleNowPlayingPanel,
     /// Show or leave out podcasts and audiobooks wherever one browses.
     SetShowPodcasts(bool),
     SetLibrarySort {

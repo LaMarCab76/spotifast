@@ -388,6 +388,18 @@ pub struct PageMetadata {
     /// under the artist's own URI.
     pub play_counts: HashMap<String, u64>,
     pub upcoming: Option<crate::prerelease::UpcomingRelease>,
+    /// An artist's portrait and biography, for the Now playing panel.
+    pub profile: Option<ArtistProfile>,
+}
+
+/// What an artist's overview says about them, beyond their songs.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ArtistProfile {
+    /// The largest portrait Spotify offers.
+    pub avatar: Option<String>,
+    /// The biography as plain text: Spotify's links and entities are
+    /// reduced to their words.
+    pub biography: Option<String>,
 }
 
 /// Read song play counts and, for artists, monthly listeners and the
@@ -402,6 +414,7 @@ pub async fn page_metadata(
     let client_token = session.spclient().client_token().await?;
     let mut counts = HashMap::new();
     let mut upcoming = None;
+    let mut profile = None;
     match crate::util::uri_kind(uri) {
         Some("album") => {
             let mut offset = 0;
@@ -460,12 +473,14 @@ pub async fn page_metadata(
             if let Some(listeners) = monthly_listeners(&body) {
                 counts.insert(uri.to_string(), listeners);
             }
+            profile = artist_profile(&body);
         }
         _ => anyhow::bail!("Spotify counts plays only for album and artist songs"),
     }
     Ok(PageMetadata {
         play_counts: counts,
         upcoming,
+        profile,
     })
 }
 
@@ -500,6 +515,56 @@ fn play_counts_from(list: &serde_json::Value, counts: &mut HashMap<String, u64>)
         }
     }
     rows.len()
+}
+
+/// An artist's portrait and biography in its `queryArtistOverview` answer,
+/// or `None` when it has neither.
+fn artist_profile(body: &serde_json::Value) -> Option<ArtistProfile> {
+    let artist = body.pointer("/data/artistUnion")?;
+    let avatar = artist
+        .pointer("/visuals/avatarImage/sources")
+        .and_then(|sources| sources.as_array())
+        .and_then(|sources| {
+            sources
+                .iter()
+                .filter_map(|source| {
+                    let url = source.get("url")?.as_str()?;
+                    let width = source.get("width").and_then(|w| w.as_u64()).unwrap_or(0);
+                    Some((width, url))
+                })
+                .max_by_key(|(width, _)| *width)
+        })
+        .map(|(_, url)| url.to_string());
+    let biography = artist
+        .pointer("/profile/biography/text")
+        .and_then(|text| text.as_str())
+        .map(plain_text)
+        .filter(|text| !text.is_empty());
+    (avatar.is_some() || biography.is_some()).then_some(ArtistProfile { avatar, biography })
+}
+
+/// Spotify's biographies are HTML: links to other artists and a few
+/// entities. Their words are what the panel shows.
+fn plain_text(html: &str) -> String {
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for c in html.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' if in_tag => in_tag = false,
+            _ if !in_tag => text.push(c),
+            _ => {}
+        }
+    }
+    let text = text
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&#x27;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&nbsp;", " ");
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// An artist's monthly listeners in its `queryArtistOverview` answer.
@@ -2031,6 +2096,32 @@ mod tests {
         assert!(super::upcoming_release(&artist).is_some());
         assert!(super::upcoming_release(&serde_json::json!({"preRelease": "odd"})).is_none());
         assert!(super::upcoming_release(&serde_json::json!({})).is_none());
+    }
+
+    #[test]
+    fn an_artist_overview_carries_a_portrait_and_a_plain_biography() {
+        let body = serde_json::json!({"data": {"artistUnion": {
+            "profile": {"biography": {
+                "text": "Born in <a href=\"spotify:artist:x\">Brighton</a>, Simon Green &amp; friends\n  make  music.",
+                "type": "AUTOBIOGRAPHY"
+            }},
+            "visuals": {"avatarImage": {"sources": [
+                {"url": "https://i.scdn.co/small", "width": 160, "height": 160},
+                {"url": "https://i.scdn.co/large", "width": 640, "height": 640},
+                {"url": "https://i.scdn.co/medium", "width": 320, "height": 320}
+            ]}}
+        }}});
+        assert_eq!(
+            super::artist_profile(&body),
+            Some(super::ArtistProfile {
+                avatar: Some("https://i.scdn.co/large".into()),
+                biography: Some("Born in Brighton, Simon Green & friends make music.".into()),
+            })
+        );
+        let bare =
+            serde_json::json!({"data": {"artistUnion": {"profile": {"biography": {"text": " "}}}}});
+        assert_eq!(super::artist_profile(&bare), None);
+        assert_eq!(super::artist_profile(&serde_json::json!({})), None);
     }
 
     #[test]

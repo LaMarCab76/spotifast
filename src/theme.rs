@@ -525,6 +525,7 @@ fastframe_icons::icons! {
         Speaker => "speaker",
         Square => "square",
         SquarePen => lucide "square-pen",
+        SquarePlay => "square-play",
         Sun => lucide "sun",
         Tablet => "tablet",
         Trash => lucide "trash-2",

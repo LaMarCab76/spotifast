@@ -136,7 +136,8 @@ clients. Spotifast uses its session for:
   Pathfinder queries Spotify's own pages make. The Web API has none. When
   the read fails, the lists leave the counts out.
 - **Monthly listeners** on an artist page, from the same artist query. The
-  Web API has no such number.
+  Web API has no such number. The same answer gives the artist's portrait
+  and biography in the Now playing panel.
 - **Listening activity**: what the people the account follows are playing,
   from the private feed behind Spotify's own panel. The Web API has no such
   request. Spotify may change this response without notice; when the feed

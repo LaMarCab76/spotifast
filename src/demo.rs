@@ -1352,6 +1352,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             }
             "queue" => app.show_queue_panel = true,
             "panels-left" => app.settings.panel_side = crate::settings::PanelSide::Left,
+            "now-playing" => app.show_now_playing_panel = true,
             "no-podcasts" => app.settings.show_podcasts = false,
             "friends" => {
                 app.show_friends_panel = true;
@@ -3308,6 +3309,58 @@ mod tests {
 
     /// Spotify lists audiobooks among saved shows, but librespot can't play
     /// them, so the Podcasts shelf leaves out any show marked as one.
+    #[test]
+    fn now_playing_shows_the_song_its_artist_and_what_comes_next() {
+        let (ctx, mut app) = accessible_app("now-playing-panel");
+        app.show_now_playing_panel = true;
+        let now = app.now_playing().expect("the demo plays a song");
+        let artist = now.artists.first().expect("a credited artist").clone();
+        let uri = crate::ui::artist_uri(&artist).unwrap();
+        app.artist_profiles.insert(
+            uri.clone(),
+            crate::session_reads::ArtistProfile {
+                avatar: None,
+                biography: Some("Made in Brighton, grown in Los Angeles.".into()),
+            },
+        );
+        app.play_counts.insert(uri.clone(), 4_200_000);
+        let next = match &app.queue {
+            Loadable::Loaded(queue) => queue.queue.first().map(|item| item.name().to_string()),
+            _ => None,
+        }
+        .expect("the demo queues songs");
+        let view = crate::ui::now_playing::side_panel;
+        view_frame(&ctx, &mut app, vec![], view);
+        let texts = view_frame(&ctx, &mut app, vec![], view);
+        let has = |text: &str| texts.iter().any(|(label, _)| label.contains(text));
+        for shown in [
+            now.title.as_str(),
+            "About the artist",
+            "Made in Brighton",
+            "monthly listeners",
+            "Next in queue",
+            next.as_str(),
+        ] {
+            assert!(has(shown), "{shown} in {texts:?}");
+        }
+
+        // A song by another artist never shows the first one's card.
+        app.artist_profiles.clear();
+        app.play_counts.remove(&uri);
+        let texts = view_frame(&ctx, &mut app, vec![], view);
+        assert!(
+            !texts
+                .iter()
+                .any(|(label, _)| label.contains("Made in Brighton"))
+        );
+        assert!(
+            !texts
+                .iter()
+                .any(|(label, _)| label.contains("monthly listeners"))
+        );
+        app.backend.shutdown();
+    }
+
     #[test]
     fn podcasts_left_out_leave_the_sidebar_home_and_search() {
         let (ctx, mut app) = accessible_app("podcasts-left-out");

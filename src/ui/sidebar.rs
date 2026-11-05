@@ -641,7 +641,10 @@ fn paint_grid_art_mask(app: &App, ui: &egui::Ui, rect: Rect) {
 }
 
 fn has_expanded_art(app: &App) -> bool {
+    // Now playing shows the cover already; the setting stays for when it
+    // closes.
     app.settings.art_expanded
+        && !app.show_now_playing_panel
         && app
             .now_playing()
             .is_some_and(|now| now.art_url.is_some() || now.art_small.is_some())

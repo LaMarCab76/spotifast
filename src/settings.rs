@@ -79,8 +79,8 @@ pub struct HomeSettings {
     pub recommendations: HomeShelfSettings,
 }
 
-/// The side of the window the queue, lyrics and listening activity open
-/// on. The library sidebar takes the other one.
+/// The side of the window Now playing, the queue, lyrics and listening
+/// activity open on. The library sidebar takes the other one.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PanelSide {
@@ -1944,6 +1944,9 @@ pub struct SessionState {
     pub window_maximized: bool,
     /// Whether the queue panel was open.
     pub queue_open: Option<bool>,
+    /// Whether the Now playing panel was open. The queue wins if both were.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub now_playing_open: Option<bool>,
     /// Which tab the queue panel showed: `queue` or `recents`.
     pub queue_tab: Option<String>,
     /// Last outer position of the Winamp window.

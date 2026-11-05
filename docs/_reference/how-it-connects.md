@@ -76,7 +76,11 @@ Spotifast uses separate credentials for Web API access and local playback:
    per run; artist overviews are revalidated after ten minutes while viewed. A
    failed first read leaves the column out; an artist refresh keeps previously
    received counts visible. The artist query also carries the monthly listeners
-   shown on the artist page.
+   shown on the artist page, and the portrait and biography the **Now
+   playing** panel shows. While that panel is open, the playing song's first
+   artist is read the same way when the song changes, at most once every ten
+   minutes per artist, so songs by the same artist ask nothing more. Without
+   this session, the panel leaves those details out.
 
    The **Listening activity** panel also needs this session. While the panel
    is open, and only then, the session reads Spotify's private

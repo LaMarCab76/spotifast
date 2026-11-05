@@ -479,7 +479,10 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
         pos2(cover_rect.right() - 10.0, cover_rect.top() + 10.0),
         Vec2::splat(18.0),
     );
-    let offer_expand = art_available && !app.settings.art_expanded && app.settings.sidebar_visible;
+    let offer_expand = art_available
+        && !app.settings.art_expanded
+        && app.settings.sidebar_visible
+        && !app.show_now_playing_panel;
     let over_expand = offer_expand && ui.rect_contains_pointer(expand_rect);
     if cover_response.clicked() && !over_expand {
         if let Some(id) = &now.album_id {
@@ -1079,9 +1082,28 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, transport_
     {
         app.actions.push(Action::ToggleLyricsPanel);
     }
-    // The Listening activity button is the first to go in a narrow window,
-    // so it never crowds the transport.
-    let left = ui.min_rect().left() - ui.spacing().item_spacing.x - (18.0 + theme::ICON_BUTTON_PAD);
+    // Now playing and then Listening activity are the first to go in a
+    // narrow window, so they never crowd the transport.
+    let button = 18.0 + theme::ICON_BUTTON_PAD;
+    let left = ui.min_rect().left() - ui.spacing().item_spacing.x - button;
+    if left - transport_right >= TRANSPORT_GAP
+        && theme::icon_button(
+            ui,
+            Icon::SquarePlay,
+            18.0,
+            if app.show_now_playing_panel {
+                palette.accent
+            } else {
+                palette.secondary
+            },
+            palette.text,
+            &gettext(app.locale, "Now playing"),
+        )
+        .clicked()
+    {
+        app.actions.push(Action::ToggleNowPlayingPanel);
+    }
+    let left = ui.min_rect().left() - ui.spacing().item_spacing.x - button;
     if left - transport_right >= TRANSPORT_GAP
         && theme::icon_button(
             ui,

@@ -656,8 +656,10 @@ pub struct App {
     pub show_queue_panel: bool,
     pub show_lyrics_panel: bool,
     /// Friend activity takes the right panel's place, so at most one of the
-    /// Queue, Lyrics and Friend activity is open.
+    /// Queue, Lyrics, Friend activity and Now playing is open.
     pub show_friends_panel: bool,
+    /// The playing song, large, with its artist and what plays next.
+    pub show_now_playing_panel: bool,
     /// What friends last played. A refresh keeps the last answer on screen.
     pub friends: Loadable<Vec<crate::session_reads::FriendActivity>>,
     friends_in_flight: bool,
@@ -832,6 +834,8 @@ pub struct App {
     artist_metadata_reads: HashMap<String, ArtistMetadataRead>,
     /// Upcoming releases read with artist play counts, kept only for this account.
     pub artist_prereleases: HashMap<String, crate::prerelease::UpcomingRelease>,
+    /// Artists' portraits and biographies from their overviews, by URI.
+    pub artist_profiles: HashMap<String, crate::session_reads::ArtistProfile>,
     play_count_generation: u64,
     /// User ids resolved to avatar picture urls, asked for alongside the
     /// names; `None` while unknown or when Spotify gives no picture.
@@ -1381,6 +1385,8 @@ impl App {
             show_queue_panel: session.queue_open.unwrap_or(false),
             show_lyrics_panel: false,
             show_friends_panel: false,
+            show_now_playing_panel: !session.queue_open.unwrap_or(false)
+                && session.now_playing_open.unwrap_or(false),
             friends: Loadable::NotLoaded,
             friends_in_flight: false,
             friends_fetched_at: None,
@@ -1472,6 +1478,7 @@ impl App {
             play_counts: HashMap::new(),
             play_count_reads: HashMap::new(),
             artist_prereleases: HashMap::new(),
+            artist_profiles: HashMap::new(),
             artist_metadata_reads: HashMap::new(),
             play_count_generation: 0,
             user_names_revision: 0,
@@ -3746,6 +3753,7 @@ impl App {
         self.prerelease_request = None;
         self.artist_pages.clear();
         self.artist_prereleases.clear();
+        self.artist_profiles.clear();
         self.artist_metadata_reads.clear();
         self.play_counts.clear();
         self.play_count_reads.clear();
@@ -4338,9 +4346,13 @@ impl App {
         }
         if matches!(self.page(), Page::Queue)
             || self.show_queue_panel
+            || self.show_now_playing_panel
             || (self.settings.winamp_window && self.settings.playlist_open)
         {
             self.refresh_queue(true);
+        }
+        if self.show_now_playing_panel {
+            self.request_now_playing_artist();
         }
         if self.show_lyrics_panel || self.lyrics_fullscreen.is_some() {
             // Fullscreen shows lyrics without the panel flag when the
@@ -4616,7 +4628,10 @@ impl App {
                 self.refresh_devices();
             }
             let playlist_open = self.settings.winamp_window && self.settings.playlist_open;
-            if (self.show_queue_panel || matches!(self.page(), Page::Queue) || playlist_open)
+            if (self.show_queue_panel
+                || self.show_now_playing_panel
+                || matches!(self.page(), Page::Queue)
+                || playlist_open)
                 && !self.queue.is_loading()
                 && self
                     .queue_fetched_at
@@ -7846,6 +7861,27 @@ impl App {
         }
     }
 
+    /// Asks about the playing song's first artist for the Now playing panel:
+    /// their portrait, biography and monthly listeners, and whether the
+    /// account follows them. Each is read once and kept, so skipping through
+    /// songs by the same artist asks nothing more.
+    fn request_now_playing_artist(&mut self) {
+        let Some(now) = self.now_playing() else {
+            return;
+        };
+        // A local file's artist is only a name in its tags.
+        if now.is_episode || now.uri.starts_with("spotify:local:") {
+            return;
+        }
+        let Some(uri) = now.artists.first().and_then(crate::ui::artist_uri) else {
+            return;
+        };
+        self.request_play_counts(&uri);
+        if self.is_saved(&uri).is_none() {
+            self.request_contains(vec![uri]);
+        }
+    }
+
     /// Whether Spotify's play counts for the album or artist `uri` arrived,
     /// so its list shows them.
     pub fn has_play_counts(&self, uri: &str) -> bool {
@@ -7888,6 +7924,14 @@ impl App {
                     .insert(uri.clone(), upcoming.clone());
             } else {
                 self.artist_prereleases.remove(&uri);
+            }
+            match &data.profile {
+                Some(profile) => {
+                    self.artist_profiles.insert(uri.clone(), profile.clone());
+                }
+                None => {
+                    self.artist_profiles.remove(&uri);
+                }
             }
         }
         let read = match result {
@@ -13307,6 +13351,7 @@ impl App {
                 if self.show_queue_panel {
                     self.show_lyrics_panel = false;
                     self.show_friends_panel = false;
+                    self.show_now_playing_panel = false;
                     self.refresh_queue(true);
                 }
             }
@@ -13316,6 +13361,7 @@ impl App {
                 if self.show_lyrics_panel {
                     self.show_queue_panel = false;
                     self.show_friends_panel = false;
+                    self.show_now_playing_panel = false;
                     self.lyrics_following = true;
                     self.request_lyrics();
                 }
@@ -13325,7 +13371,18 @@ impl App {
                 if self.show_friends_panel {
                     self.show_queue_panel = false;
                     self.show_lyrics_panel = false;
+                    self.show_now_playing_panel = false;
                     self.refresh_friends();
+                }
+            }
+            Action::ToggleNowPlayingPanel => {
+                self.show_now_playing_panel = !self.show_now_playing_panel;
+                if self.show_now_playing_panel {
+                    self.show_queue_panel = false;
+                    self.show_lyrics_panel = false;
+                    self.show_friends_panel = false;
+                    self.refresh_queue(true);
+                    self.request_now_playing_artist();
                 }
             }
             Action::SetLyricsFullscreen(fullscreen) => {
@@ -13354,6 +13411,7 @@ impl App {
                         self.show_lyrics_panel = true;
                     }
                     self.show_friends_panel = false;
+                    self.show_now_playing_panel = false;
                     self.lyrics_following = true;
                     self.lyrics_line_shown = None;
                     self.request_lyrics();
@@ -14944,6 +15002,7 @@ impl App {
                 window_pos: self.window_geometry.position,
                 window_maximized: self.window_geometry.maximized,
                 queue_open: Some(self.show_queue_panel),
+                now_playing_open: Some(self.show_now_playing_panel),
                 queue_tab: Some(self.queue_tab.encode().to_string()),
                 winamp_pos: self.winamp.geometry.position,
                 milkdrop_pos: self.milkdrop_pos,
@@ -23834,6 +23893,123 @@ mod tests {
     /// Friend activity takes the right panel's place: opening it closes the
     /// Queue and Lyrics, and opening either of them closes it.
     #[test]
+    fn now_playing_takes_the_side_panels_place_and_asks_about_its_artist() {
+        use crate::api::models::ArtistRef;
+        let ctx = egui::Context::default();
+        let mut app = test_app("now-playing-panel");
+        app.local_ready = true;
+        app.network_reachable = true;
+        let artist = "spotify:artist:bonobo";
+        app.frame_now = Some(NowPlaying {
+            local: true,
+            device_name: None,
+            device_kind: None,
+            uri: "spotify:track:rosewood".into(),
+            id: Some("rosewood".into()),
+            title: "Rosewood".into(),
+            artists: vec![ArtistRef {
+                id: Some("bonobo".into()),
+                name: "Bonobo".into(),
+                uri: None,
+            }],
+            subtitle: "Bonobo".into(),
+            album_name: "Fragments".into(),
+            album_id: Some("fragments".into()),
+            show_id: None,
+            art_url: None,
+            art_small: None,
+            duration_ms: 180_000,
+            position_ms: 0,
+            playing: true,
+            loading: false,
+            shuffle: false,
+            repeat: RepeatMode::Off,
+            volume_percent: 50,
+            can_control: true,
+            can_set_volume: true,
+            is_episode: false,
+            resuming: false,
+        });
+        app.show_queue_panel = true;
+        app.apply(Action::ToggleNowPlayingPanel, &ctx);
+        assert!(app.show_now_playing_panel && !app.show_queue_panel);
+        assert_eq!(
+            app.play_count_reads.get(artist),
+            Some(&PlayCountRead::Asked),
+            "the artist's overview is asked for, from its id"
+        );
+        for (toggle, open) in [
+            (Action::ToggleQueuePanel, "queue"),
+            (Action::ToggleLyricsPanel, "lyrics"),
+            (Action::ToggleFriendsPanel, "friends"),
+        ] {
+            app.apply(toggle, &ctx);
+            assert!(!app.show_now_playing_panel, "{open} takes its place");
+            app.apply(Action::ToggleNowPlayingPanel, &ctx);
+            assert!(
+                app.show_now_playing_panel
+                    && !app.show_queue_panel
+                    && !app.show_lyrics_panel
+                    && !app.show_friends_panel,
+                "and gives it back over {open}"
+            );
+        }
+        app.apply(Action::ToggleNowPlayingPanel, &ctx);
+        assert!(!app.show_now_playing_panel);
+
+        // An answer brings the portrait and biography, and a later one
+        // without them takes them away again.
+        let profile = crate::session_reads::ArtistProfile {
+            avatar: Some("https://i.scdn.co/bonobo".into()),
+            biography: Some("Simon Green".into()),
+        };
+        app.receive_play_counts(
+            artist.into(),
+            app.play_count_generation,
+            Ok(crate::session_reads::PageMetadata {
+                profile: Some(profile.clone()),
+                ..Default::default()
+            }),
+        );
+        assert_eq!(app.artist_profiles.get(artist), Some(&profile));
+        app.receive_play_counts(
+            artist.into(),
+            app.play_count_generation,
+            Ok(Default::default()),
+        );
+        assert!(!app.artist_profiles.contains_key(artist));
+        app.backend.shutdown();
+    }
+
+    #[test]
+    fn now_playing_comes_back_after_a_restart_unless_the_queue_was_open() {
+        for (queue, expected) in [(false, true), (true, false)] {
+            let mut app = test_app(&format!("now-playing-session-{queue}"));
+            app.show_now_playing_panel = true;
+            app.show_queue_panel = queue;
+            app.save_session();
+            app.flush_files();
+            let dirs = app.dirs.clone();
+            app.backend.shutdown();
+            let mut again = App::new(
+                &Waker::default(),
+                dirs.clone(),
+                Settings::default(),
+                AppOptions {
+                    media_controls: false,
+                    restore_sign_in: false,
+                    tray: false,
+                    autostart: false,
+                },
+            );
+            assert_eq!(again.show_now_playing_panel, expected, "queue open {queue}");
+            assert_eq!(again.show_queue_panel, queue);
+            again.backend.shutdown();
+            let _ = std::fs::remove_dir_all(dirs.config.parent().unwrap());
+        }
+    }
+
+    #[test]
     fn friend_activity_swaps_places_with_the_queue_and_lyrics() {
         let ctx = egui::Context::default();
         let mut app = test_app("friends-panel-swap");
@@ -23864,6 +24040,7 @@ mod tests {
         crate::demo::populate(&mut app);
         let mut shown_at = None;
         let mut button_at = None;
+        let mut now_playing_at = None;
         for width in (760..=1600).step_by(8) {
             let width = width as f32;
             let mut tree = None;
@@ -23901,17 +24078,47 @@ mod tests {
             } else {
                 assert!(button_at.is_none(), "it stays once shown, gone at {width}");
             }
+            // Now playing sits between Lyrics and Listening activity, and
+            // goes second.
+            let now_playing = button("Now playing");
+            if let Some(now_playing) = now_playing {
+                now_playing_at.get_or_insert(width);
+                assert!(now_playing.y0 > 700.0, "in the player bar at {width}");
+                assert!(now_playing.x1 <= lyrics.x0, "before Lyrics at {width}");
+                assert!(
+                    now_playing.x0 - repeat.x1 >= 10.0,
+                    "clear of Repeat at {width}"
+                );
+            } else {
+                assert!(
+                    now_playing_at.is_none(),
+                    "it stays once shown, gone at {width}"
+                );
+            }
             if let Some(friends) = button("Listening activity") {
                 shown_at.get_or_insert(width);
                 assert!(friends.y0 > 700.0, "in the player bar at {width}");
                 assert!(friends.x1 <= lyrics.x0, "before Lyrics at {width}");
+                if let Some(now_playing) = now_playing {
+                    assert!(
+                        friends.x1 <= now_playing.x0,
+                        "before Now playing at {width}"
+                    );
+                }
                 assert!(friends.x0 - repeat.x1 >= 10.0, "clear of Repeat at {width}");
             } else {
                 assert!(shown_at.is_none(), "it stays once shown, gone at {width}");
             }
         }
         assert!(button_at.is_some_and(|width| width > 760.0 && width <= 840.0));
-        assert!(shown_at.is_some_and(|width| Some(width) > button_at && width <= 920.0));
+        assert!(
+            now_playing_at.is_some_and(|width| Some(width) > button_at && width <= 920.0),
+            "{now_playing_at:?}"
+        );
+        assert!(
+            shown_at.is_some_and(|width| Some(width) > now_playing_at && width <= 960.0),
+            "{shown_at:?}"
+        );
         app.backend.shutdown();
     }
 

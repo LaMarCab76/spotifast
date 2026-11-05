@@ -396,7 +396,7 @@ main fields are:
 | `liked_songs_pinned` | `true` | Keep Liked Songs in the pin block; older settings place it first until moved |
 | `sidebar_compact` | `false` | Names only in the library sidebar, no covers |
 | `sidebar_grid` | `false` | Library entries as responsive cover cards instead of rows |
-| `panel_side` | `right` | Where the queue, lyrics and listening activity open, `left` or `right`; the library sidebar takes the other side |
+| `panel_side` | `right` | Where Now playing, the queue, lyrics and listening activity open, `left` or `right`; the library sidebar takes the other side |
 | `show_podcasts` | `true` | Podcasts and audiobooks in the library, Home, search and the Recent tab; `false` leaves them out wherever you browse |
 | `tracklist_compact` | `false` | One-line track rows without covers |
 | `middle_click_autoscroll` | `false` | Linux only: middle-click a list to autoscroll it. Windows always autoscrolls and macOS never does |
@@ -481,10 +481,11 @@ and `--demo-show` adds surfaces on top of it: a comma separated list of
 `library-grid-wide`, `eq-user-presets`, `start-in-tray`, `rtl`, `player-bar-spectrum`, `player-bar-waveform`,
 `lyrics-fullscreen-view`, `lyrics-fullscreen-instrumental`, `signed-out`, `connecting`,
 `waiting-for-browser`, `sign-in-returning`, `sign-in-malformed`, `sign-in-shared-retired`,
-`sign-in-unknown-client`, `sign-in-not-allowed`, `shared-grant`, `own-app`, `panels-left`, and `no-podcasts`. The Library variants show the list or cover grid with
+`sign-in-unknown-client`, `sign-in-not-allowed`, `shared-grant`, `own-app`, `panels-left`, `now-playing`, and `no-podcasts`. The Library variants show the list or cover grid with
 a normal, narrow, or wide sidebar and collapsed artwork for matching captures.
 `panels-left` opens the side panels on the left with the Library on the right,
-and `no-podcasts` leaves podcasts and audiobooks out.
+`now-playing` opens the Now playing panel, and `no-podcasts` leaves podcasts and
+audiobooks out.
 `shuffle-selected` and `shuffle-started` capture the selected-mode and
 playback-started outcomes of a collection Shuffle click. `update` shows a sample
 update badge for checking its layout. `personal-app` shows the introduction to

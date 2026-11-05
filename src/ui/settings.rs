@@ -1369,7 +1369,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             panel_side.clone(),
             gettext(
                 locale,
-                "Where the queue, lyrics and listening activity open. Your library takes the other side.",
+                "Where Now playing, the queue, lyrics and listening activity open. Your library takes the other side.",
             ),
         ),
     ];

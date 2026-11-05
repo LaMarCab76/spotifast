@@ -13,6 +13,7 @@ pub mod library;
 pub mod login;
 mod lyrics;
 pub mod new_releases;
+pub(crate) mod now_playing;
 pub mod player_bar;
 mod prerelease;
 pub mod queue;
@@ -106,6 +107,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         }
         if app.show_friends_panel {
             friends::side_panel(app, ui);
+        }
+        if app.show_now_playing_panel {
+            now_playing::side_panel(app, ui);
         }
         central(app, ui);
     }
@@ -616,7 +620,10 @@ pub(crate) fn panels_on_left(app: &App) -> bool {
 /// Whether one of the panels beside the page is open. They share one
 /// place, on the side the person chose.
 pub(crate) fn side_panel_open(app: &App) -> bool {
-    app.show_queue_panel || app.show_lyrics_panel || app.show_friends_panel
+    app.show_queue_panel
+        || app.show_lyrics_panel
+        || app.show_friends_panel
+        || app.show_now_playing_panel
 }
 
 /// A resizable panel docked on the left or the right of the window.
@@ -626,6 +633,21 @@ pub(crate) fn docked_panel(id: &'static str, left: bool) -> egui::Panel {
     } else {
         egui::Panel::right(id)
     }
+}
+
+/// An artist's URI, from its id when Spotify left the URI out.
+pub(crate) fn artist_uri(artist: &crate::api::models::ArtistRef) -> Option<String> {
+    artist
+        .uri
+        .clone()
+        .filter(|uri| !uri.is_empty())
+        .or_else(|| {
+            artist
+                .id
+                .as_ref()
+                .filter(|id| !id.is_empty())
+                .map(|id| format!("spotify:artist:{id}"))
+        })
 }
 
 /// The library's hide and show icon: the panel on its side of the window.
@@ -643,7 +665,7 @@ pub(crate) fn sidebar_icon(app: &App) -> Icon {
 pub(super) enum Header {
     TopBar,
     Sidebar,
-    /// The queue, or listening activity in its place.
+    /// The queue, or listening activity or Now playing in its place.
     Queue,
     Lyrics,
 }
@@ -677,7 +699,7 @@ pub(super) fn corner_header(app: &App, left_corner: bool) -> Header {
     corner_header_for(
         panels_on_left(app),
         app.settings.sidebar_visible,
-        app.show_queue_panel || app.show_friends_panel,
+        app.show_queue_panel || app.show_friends_panel || app.show_now_playing_panel,
         app.show_lyrics_panel,
         left_corner,
     )

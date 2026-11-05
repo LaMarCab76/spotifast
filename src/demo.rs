@@ -8596,7 +8596,7 @@ mod tests {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
-                egui::vec2(1280.0, 4000.0),
+                egui::vec2(1280.0, SETTINGS_PAGE_HEIGHT),
             )),
             ..Default::default()
         };
@@ -8642,6 +8642,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    /// Tall enough to draw the whole Settings page, with the rows only some
+    /// platforms show (Windows' title bar, Linux's autoscroll) and room for
+    /// more, so the last sections are never cut off.
+    const SETTINGS_PAGE_HEIGHT: f32 = 6000.0;
+
     /// The frame rate is a dial with detents: it stops at the rates
     /// worth having, names the one it is on, and moving it one notch
     /// lands on the next of them rather than somewhere in between.
@@ -8684,7 +8689,7 @@ mod tests {
                 // Draw the full Settings page, including MilkDrop.
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(1280.0, 4000.0),
+                    egui::vec2(1280.0, SETTINGS_PAGE_HEIGHT),
                 )),
                 ..Default::default()
             };
@@ -8765,7 +8770,7 @@ mod tests {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(1280.0, 4000.0),
+                    egui::vec2(1280.0, SETTINGS_PAGE_HEIGHT),
                 )),
                 ..Default::default()
             };

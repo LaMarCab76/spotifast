@@ -1372,6 +1372,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 "Where Now playing, the queue, lyrics and listening activity open. Your library takes the other side.",
             ),
         ),
+        RowText::new(gettext(locale, "Reveal player controls on hover"),
+            gettext(locale, "Hide controls while the visualizer moves. Hover or press Tab to reveal them and soften the picture.")),
+        RowText::new(gettext(locale, "Previous lyrics lines"),
+            gettext(locale, "Lines before the current line in full screen. Scroll to read the complete lyrics.")),
+        RowText::new(gettext(locale, "Next lyrics lines"),
+            gettext(locale, "Lines after the current line in full screen.")),
+        RowText::new(gettext(locale, "Full screen background"),
+            gettext(locale, "Animated cover art or a blurred artist photo. Missing photos use the cover.")),
+        RowText::new(gettext(locale, "Full screen visualizer"),
+            gettext(locale, "Keep the visualizer behind the player controls or in a compact strip above them.")),
     ];
     for index in [8, 9, 10] {
         appearance_rows[index].available &= visualizers;
@@ -1603,6 +1613,134 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         app.settings.visualizer_fps = rate;
                         changed = true;
                     }
+                },
+            );
+            filtered_row(
+                ui,
+                &palette,
+                &needle,
+                &appearance,
+                &appearance_rows[15],
+                |ui| {
+                    let mut hide = app.settings.player_bar_auto_hide;
+                    if widgets::switch(
+                        ui,
+                        &palette,
+                        &gettext(locale, "Reveal player controls on hover"),
+                        &mut hide,
+                    )
+                    .changed()
+                    {
+                        app.actions.push(Action::SetPlayerBarAutoHide(hide));
+                    }
+                },
+            );
+            for (index, previous) in [(16, true), (17, false)] {
+                filtered_row(
+                    ui,
+                    &palette,
+                    &needle,
+                    &appearance,
+                    &appearance_rows[index],
+                    |ui| {
+                        let mut presentation = app.settings.lyrics_presentation;
+                        let value = if previous {
+                            &mut presentation.previous
+                        } else {
+                            &mut presentation.next
+                        };
+                        let label = if previous {
+                            gettext(locale, "Previous lyrics lines")
+                        } else {
+                            gettext(locale, "Next lyrics lines")
+                        };
+                        let response = ui
+                            .add(
+                                egui::DragValue::new(&mut *value)
+                                    .range(0..=if previous { 3 } else { 5 }),
+                            )
+                            .on_hover_text(label.as_ref());
+                        response.widget_info(|| {
+                            let mut info = egui::WidgetInfo::drag_value(true, f64::from(*value));
+                            info.label = Some(label.to_string());
+                            info
+                        });
+                        if response.changed() {
+                            app.actions
+                                .push(Action::SetLyricsPresentation(presentation));
+                        }
+                    },
+                );
+            }
+            filtered_row(
+                ui,
+                &palette,
+                &needle,
+                &appearance,
+                &appearance_rows[18],
+                |ui| {
+                    use crate::settings::LyricsBackground;
+                    let mut presentation = app.settings.lyrics_presentation;
+                    let selected = match presentation.background {
+                        LyricsBackground::Artwork => gettext(locale, "Animated cover art"),
+                        LyricsBackground::Artist => gettext(locale, "Artist photo"),
+                    };
+                    egui::ComboBox::from_id_salt("lyrics-background")
+                        .selected_text(selected)
+                        .show_ui(ui, |ui| {
+                            for (choice, label) in [
+                                (
+                                    LyricsBackground::Artwork,
+                                    gettext(locale, "Animated cover art"),
+                                ),
+                                (LyricsBackground::Artist, gettext(locale, "Artist photo")),
+                            ] {
+                                if ui
+                                    .selectable_value(&mut presentation.background, choice, label)
+                                    .changed()
+                                {
+                                    app.actions
+                                        .push(Action::SetLyricsPresentation(presentation));
+                                }
+                            }
+                        });
+                },
+            );
+            filtered_row(
+                ui,
+                &palette,
+                &needle,
+                &appearance,
+                &appearance_rows[19],
+                |ui| {
+                    use crate::settings::LyricsVisualizer;
+                    let mut presentation = app.settings.lyrics_presentation;
+                    let selected = match presentation.visualizer {
+                        LyricsVisualizer::Integrated => gettext(locale, "Inside the player bar"),
+                        LyricsVisualizer::Strip => gettext(locale, "Compact strip above"),
+                    };
+                    egui::ComboBox::from_id_salt("lyrics-visualizer")
+                        .selected_text(selected)
+                        .show_ui(ui, |ui| {
+                            for (choice, label) in [
+                                (
+                                    LyricsVisualizer::Integrated,
+                                    gettext(locale, "Inside the player bar"),
+                                ),
+                                (
+                                    LyricsVisualizer::Strip,
+                                    gettext(locale, "Compact strip above"),
+                                ),
+                            ] {
+                                if ui
+                                    .selectable_value(&mut presentation.visualizer, choice, label)
+                                    .changed()
+                                {
+                                    app.actions
+                                        .push(Action::SetLyricsPresentation(presentation));
+                                }
+                            }
+                        });
                 },
             );
             filtered_row(

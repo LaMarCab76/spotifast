@@ -220,6 +220,8 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
             app.actions.push(Action::CloseDialog);
         } else if app.show_devices {
             app.show_devices = false;
+        } else if egui::Popup::is_any_open(ctx) {
+            egui::Popup::close_all(ctx);
         } else if app.lyrics_fullscreen.is_some() {
             app.actions.push(Action::SetLyricsFullscreen(false));
         }

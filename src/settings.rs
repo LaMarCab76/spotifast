@@ -111,6 +111,76 @@ impl PlayerBarVis {
     }
 }
 
+/// The image behind full-screen lyrics. Unknown future choices keep the
+/// artwork default instead of making the whole settings file unreadable.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LyricsBackground {
+    Artist,
+    #[default]
+    #[serde(other)]
+    Artwork,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LyricsVisualizer {
+    Strip,
+    #[default]
+    #[serde(other)]
+    Integrated,
+}
+
+/// Presentation of full-screen lyrics; the side panel keeps its full text.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LyricsPresentation {
+    #[serde(deserialize_with = "lyrics_previous")]
+    pub previous: u8,
+    #[serde(deserialize_with = "lyrics_next")]
+    pub next: u8,
+    #[serde(deserialize_with = "tolerant_preference")]
+    pub background: LyricsBackground,
+    #[serde(deserialize_with = "tolerant_preference")]
+    pub visualizer: LyricsVisualizer,
+}
+
+impl Default for LyricsPresentation {
+    fn default() -> Self {
+        Self {
+            previous: 1,
+            next: 2,
+            background: LyricsBackground::Artwork,
+            visualizer: LyricsVisualizer::Integrated,
+        }
+    }
+}
+
+fn tolerant_preference<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned + Default,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).unwrap_or_default())
+}
+
+fn lyrics_count<'de, D>(deserializer: D, max: u8, fallback: u8) -> Result<u8, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value
+        .as_f64()
+        .map_or(fallback, |n| n.clamp(0.0, f64::from(max)) as u8))
+}
+fn lyrics_previous<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
+    lyrics_count(d, 3, 1)
+}
+fn lyrics_next<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
+    lyrics_count(d, 5, 2)
+}
+
 /// Mini-player visualizer mode.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -327,6 +397,11 @@ pub struct Settings {
     pub player_bar_vis: PlayerBarVis,
     /// Allow clicks on the player bar background to cycle visualizer modes.
     pub player_bar_vis_click: bool,
+    /// Reveal the player controls on hover while its visualizer is moving.
+    #[serde(deserialize_with = "tolerant_preference")]
+    pub player_bar_auto_hide: bool,
+    #[serde(deserialize_with = "tolerant_preference")]
+    pub lyrics_presentation: LyricsPresentation,
     /// How many frames a second the player bar's visualizer and the mini
     /// player's analyser draw; 0 is uncapped. MilkDrop has its own.
     pub visualizer_fps: u32,
@@ -525,6 +600,8 @@ impl Default for Settings {
             accent_from_art: true,
             player_bar_vis: PlayerBarVis::Off,
             player_bar_vis_click: true,
+            player_bar_auto_hide: false,
+            lyrics_presentation: LyricsPresentation::default(),
             visualizer_fps: crate::milkdrop::DEFAULT_FPS,
             volume: (u16::MAX as u32 * 70 / 100) as u16,
             sidebar_visible: true,
@@ -1031,6 +1108,54 @@ impl ManualProxy {
 #[cfg(test)]
 mod tests {
     use super::Settings;
+
+    #[test]
+    fn lyrics_preferences_preserve_old_and_malformed_settings() {
+        use super::{LyricsBackground, LyricsPresentation, LyricsVisualizer};
+        let old: Settings = serde_json::from_str(r#"{"volume":37}"#).unwrap();
+        assert_eq!(old.volume, 37);
+        assert_eq!(old.lyrics_presentation, LyricsPresentation::default());
+        assert!(!old.player_bar_auto_hide);
+        let settings: Settings = serde_json::from_value(serde_json::json!({
+            "volume": 37, "player_bar_auto_hide": "wrong",
+            "lyrics_presentation": { "previous": 300, "next": -1,
+                "background": "future", "visualizer": 99 }
+        }))
+        .unwrap();
+        assert_eq!(settings.volume, 37);
+        assert_eq!(settings.lyrics_presentation.previous, 3);
+        assert_eq!(settings.lyrics_presentation.next, 0);
+        assert_eq!(
+            settings.lyrics_presentation.background,
+            LyricsBackground::Artwork
+        );
+        assert_eq!(
+            settings.lyrics_presentation.visualizer,
+            LyricsVisualizer::Integrated
+        );
+        for value in [
+            serde_json::json!("bad"),
+            serde_json::json!(null),
+            serde_json::json!([]),
+        ] {
+            let settings: Settings = serde_json::from_value(serde_json::json!({
+                "volume": 37, "lyrics_presentation": {"previous": value, "next": value}
+            }))
+            .unwrap();
+            assert_eq!(settings.volume, 37);
+            assert_eq!(settings.lyrics_presentation.previous, 1);
+            assert_eq!(settings.lyrics_presentation.next, 2);
+        }
+        let mut saved = Settings {
+            player_bar_auto_hide: true,
+            ..Settings::default()
+        };
+        saved.lyrics_presentation.background = LyricsBackground::Artist;
+        saved.lyrics_presentation.visualizer = LyricsVisualizer::Strip;
+        let restored: Settings = serde_json::from_str(&saved.encode().unwrap()).unwrap();
+        assert_eq!(restored.lyrics_presentation, saved.lyrics_presentation);
+        assert!(restored.player_bar_auto_hide);
+    }
 
     #[test]
     fn new_profiles_follow_the_system_and_saved_choices_are_preserved() {

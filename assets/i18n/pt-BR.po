@@ -4777,3 +4777,72 @@ msgstr "Não há mais nada na fila."
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "Reduzir movimento da letra"
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "Mostrar controles ao passar o mouse"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"Oculta os controles enquanto o visualizador se move. Passe o mouse ou "
+"pressione Tab para exibi-los e desfocar a imagem."
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "Linhas anteriores da letra"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr "Linhas antes da atual em tela cheia. Role para ler a letra completa."
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "Próximas linhas da letra"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "Linhas depois da atual em tela cheia."
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "Fundo da tela cheia"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"Capa animada ou foto desfocada do artista. Se não houver foto, a capa será "
+"usada."
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "Visualizador em tela cheia"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr ""
+"Mostra o visualizador atrás dos controles de reprodução ou em uma faixa "
+"compacta acima deles."
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "Capa animada"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "Foto do artista"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "Na barra de reprodução"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "Faixa compacta acima"

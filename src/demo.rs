@@ -1380,6 +1380,24 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 play_here(app);
                 app.local.playback = crate::player::Playback::Paused;
             }
+            "player-controls-auto-hide" => app.settings.player_bar_auto_hide = true,
+            "lyrics-strip" => {
+                app.settings.lyrics_presentation.visualizer =
+                    crate::settings::LyricsVisualizer::Strip
+            }
+            "lyrics-artist-photo" => {
+                app.settings.lyrics_presentation.background =
+                    crate::settings::LyricsBackground::Artist;
+                if let Some(uri) = app.lyrics_artist_uri() {
+                    app.artist_profiles.insert(
+                        uri,
+                        crate::session_reads::ArtistProfile {
+                            avatar: image(4).first().map(|image| image.url.clone()),
+                            biography: None,
+                        },
+                    );
+                }
+            }
             "player-bar-spectrum" | "player-bar-waveform" => {
                 app.settings.player_bar_vis = if surface == "player-bar-spectrum" {
                     crate::settings::PlayerBarVis::Spectrum
@@ -2047,6 +2065,194 @@ mod tests {
         // These frames never advance the clock or take pictures.
         app.reveal_theme_changes = false;
         (ctx, app)
+    }
+
+    #[test]
+    fn lyrics_artist_background_follows_identity_and_excludes_episodes_and_local_files() {
+        let (_ctx, mut app) = accessible_app("lyrics-portrait-source");
+        let uri = app.lyrics_artist_uri().expect("a Spotify artist");
+        app.artist_profiles.insert(
+            uri.clone(),
+            crate::session_reads::ArtistProfile {
+                avatar: Some("https://i.scdn.co/image/current-artist".into()),
+                biography: None,
+            },
+        );
+        assert_eq!(
+            app.lyrics_artist_image(),
+            Some((uri, "https://i.scdn.co/image/current-artist".into()))
+        );
+        if let Some(PlayableItem::Track(track)) = &mut app.remote.as_mut().unwrap().state.item {
+            track.artists = vec![ArtistRef {
+                id: Some("different".into()),
+                ..Default::default()
+            }];
+        }
+        assert!(
+            app.lyrics_artist_image().is_none(),
+            "the previous artist cannot become the fallback"
+        );
+        if let Some(PlayableItem::Track(track)) = &mut app.remote.as_mut().unwrap().state.item {
+            track.uri = "spotify:local:artist:album:song:123".into();
+        }
+        assert!(app.lyrics_artist_uri().is_none());
+        app.remote.as_mut().unwrap().state.item = Some(PlayableItem::Episode(Episode {
+            uri: "spotify:episode:sample".into(),
+            ..Default::default()
+        }));
+        assert!(app.lyrics_artist_uri().is_none());
+        app.backend.shutdown();
+    }
+
+    #[cfg(feature = "demo")]
+    #[test]
+    fn full_screen_progress_spans_the_window_in_both_visualizer_modes() {
+        use crate::settings::LyricsVisualizer;
+        for width in [760.0, 900.0, 1280.0, 1920.0] {
+            for mode in [LyricsVisualizer::Integrated, LyricsVisualizer::Strip] {
+                let (ctx, mut app) = accessible_app("lyrics-wide-progress");
+                apply_flags(
+                    &mut app,
+                    None,
+                    Some("lyrics-fullscreen-view,player-bar-spectrum"),
+                );
+                app.settings.lyrics_presentation.visualizer = mode;
+                let mut shapes = Vec::new();
+                for frame in 0..3 {
+                    let mut output = ctx.run_ui(
+                        egui::RawInput {
+                            time: Some(f64::from(frame)),
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(width, 520.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ui| app.frame_ui(ui),
+                    );
+                    output.textures_delta.clear();
+                    shapes = output.shapes;
+                }
+                let now = app.now_playing().unwrap();
+                let lyrics = app.lyrics.get().unwrap().as_ref().unwrap();
+                let active = lyrics.active_line(now.position_ms).unwrap();
+                for index in active.saturating_sub(1)..(active + 3).min(lyrics.lines.len()) {
+                    let text = &lyrics.lines[index].text;
+                    let (rect, clip) = shapes
+                        .iter()
+                        .find_map(|shape| match &shape.shape {
+                            egui::Shape::Text(drawn) if &drawn.galley.job.text == text => Some((
+                                egui::Rect::from_min_size(drawn.pos, drawn.galley.size()),
+                                shape.clip_rect,
+                            )),
+                            _ => None,
+                        })
+                        .unwrap_or_else(|| {
+                            panic!("missing context entry at {width} {mode:?}: {text}")
+                        });
+                    assert!(
+                        clip.expand(0.5).contains_rect(rect),
+                        "clipped context at {width} {mode:?}: {text} {rect:?} in {clip:?}"
+                    );
+                }
+                let seek = ctx
+                    .read_response(egui::Id::new("seek-slider"))
+                    .expect("seek keeps its ID");
+                assert!(
+                    seek.rect.width() > width - 160.0,
+                    "{width} {mode:?}: {:?}",
+                    seek.rect
+                );
+                assert!(seek.rect.left() >= 16.0 && seek.rect.right() <= width - 16.0);
+                assert!(seek.rect.bottom() <= 520.0);
+                app.backend.shutdown();
+            }
+        }
+    }
+
+    #[cfg(feature = "demo")]
+    #[test]
+    fn hidden_player_controls_reveal_on_hover_keyboard_and_focus() {
+        let (ctx, mut app) = accessible_app("auto-hide-player");
+        apply_flags(
+            &mut app,
+            None,
+            Some("player-bar-spectrum,player-controls-auto-hide"),
+        );
+        crate::motion::apply(&ctx, true);
+        let seek_id = egui::Id::new("seek-slider");
+        let draw = |app: &mut App, time, events| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    time: Some(time),
+                    events,
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1280.0, 800.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| app.frame_ui(ui),
+            );
+            output.textures_delta.clear();
+            output
+                .shapes
+                .iter()
+                .filter_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.job.text == "Rosewood" => {
+                        Some(text.override_text_color.unwrap_or(text.fallback_color).a())
+                    }
+                    _ => None,
+                })
+                .max()
+                .unwrap_or(0)
+        };
+        assert_eq!(
+            draw(
+                &mut app,
+                0.0,
+                vec![egui::Event::PointerMoved(egui::pos2(600.0, 200.0))]
+            ),
+            0
+        );
+        assert!(
+            ctx.read_response(seek_id).is_some(),
+            "hidden controls keep their accessible widget"
+        );
+        assert!(
+            draw(
+                &mut app,
+                1.0,
+                vec![egui::Event::PointerMoved(egui::pos2(600.0, 760.0))]
+            ) > 0
+        );
+        assert_eq!(
+            draw(
+                &mut app,
+                2.0,
+                vec![egui::Event::PointerMoved(egui::pos2(600.0, 200.0))]
+            ),
+            0
+        );
+        assert!(
+            draw(
+                &mut app,
+                3.0,
+                vec![egui::Event::Key {
+                    key: egui::Key::Tab,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }]
+            ) > 0
+        );
+        ctx.memory_mut(|memory| memory.request_focus(seek_id));
+        assert!(draw(&mut app, 4.0, vec![]) > 0);
+        ctx.memory_mut(|memory| memory.surrender_focus(seek_id));
+        app.settings.player_bar_vis = crate::settings::PlayerBarVis::Off;
+        assert!(draw(&mut app, 5.0, vec![]) > 0);
+        app.backend.shutdown();
     }
 
     /// #576: the Library heading never runs under the header's buttons. It
@@ -5567,13 +5773,15 @@ mod tests {
 
         // The bar's button is a control: it leaves and comes back, and the
         // backdrop stays out of it.
-        let button = egui::pos2(1280.0 - 16.0 - 15.0, 800.0 - 45.0);
+        let button = egui::pos2(1280.0 - 16.0 - 15.0, 800.0 - 71.0);
         run(&ctx, &mut app, vec![egui::Event::PointerMoved(button)]);
         run(&ctx, &mut app, pointer_click(button, Primary));
         assert!(app.lyrics_fullscreen.is_none(), "the button leaves");
         assert!(!app.settings.lyrics_milkdrop);
         run(&ctx, &mut app, Vec::new());
         run(&ctx, &mut app, Vec::new());
+        let button = egui::pos2(1280.0 - 16.0 - 15.0, 800.0 - 45.0);
+        run(&ctx, &mut app, vec![egui::Event::PointerMoved(button)]);
         run(&ctx, &mut app, pointer_click(button, Primary));
         assert!(app.lyrics_fullscreen.is_some(), "and enters");
         assert!(!app.settings.lyrics_milkdrop);
@@ -9109,6 +9317,16 @@ mod tests {
         ] {
             let (ctx, mut app) = accessible_app(surface);
             apply_flags(&mut app, None, Some(surface));
+            let current_line = app
+                .lyrics
+                .get()
+                .and_then(|lyrics| lyrics.as_ref())
+                .and_then(|lyrics| {
+                    lyrics
+                        .active_line(app.now_playing()?.position_ms)
+                        .map(|index| lyrics.lines[index].text.clone())
+                })
+                .unwrap_or_default();
             let mut shapes = Vec::new();
             for frame in 0..30 {
                 let mut output = ctx.run_ui(
@@ -9125,7 +9343,7 @@ mod tests {
                 output.textures_delta.clear();
                 shapes = output.shapes;
             }
-            let lyric = find(&shapes, "Somewhere past the county line");
+            let lyric = find(&shapes, &current_line);
             let detail = find(&shapes, "No timed lyrics for this track.");
             if words {
                 let lyric = lyric.expect("the words are drawn");

@@ -4764,3 +4764,74 @@ msgstr "Sırada başka bir şey yok."
 #~ msgid "Spotify does not let apps remove one queued song."
 #~ msgstr ""
 #~ "Spotify uygulamaların sıradan tek bir şarkıyı kaldırmasına izin vermiyor."
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "Üzerine gelince oynatma denetimlerini göster"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"Görselleştirme hareket ederken denetimleri gizler. Denetimleri göstermek ve "
+"görüntüyü bulanıklaştırmak için fareyi üzerine getirin veya Tab tuşuna basın."
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "Önceki şarkı sözü satırları"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr ""
+"Tam ekranda geçerli satırdan önce gösterilen satırlar. Sözlerin tamamını "
+"okumak için kaydırın."
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "Sonraki şarkı sözü satırları"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "Tam ekranda geçerli satırdan sonra gösterilen satırlar."
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "Tam ekran arka planı"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"Hareketli kapak veya bulanık sanatçı fotoğrafı. Fotoğraf yoksa kapak "
+"kullanılır."
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "Tam ekran görselleştirmesi"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr ""
+"Görselleştirmeyi oynatma denetimlerinin arkasında veya üstlerindeki dar bir "
+"şeritte gösterir."
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "Hareketli kapak"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "Sanatçı fotoğrafı"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "Oynatma çubuğunda"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "Üstte dar şerit"

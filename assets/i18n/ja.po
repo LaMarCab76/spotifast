@@ -4745,3 +4745,73 @@ msgstr "再生待ちリストにほかの曲はありません。"
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "歌詞の動きを減らす"
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "マウスを重ねると再生コントロールを表示"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"ビジュアライザーが動いている間はコントロールを隠します。マウスを重ねるかTab"
+"キーを押すと、コントロールを表示して映像をぼかします。"
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "前の歌詞の行数"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr ""
+"全画面で現在の行より前に表示する行数。スクロールすると歌詞全体を読めます。"
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "次の歌詞の行数"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "全画面で現在の行より後に表示する行数。"
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "全画面の背景"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"動くカバー画像、またはぼかしたアーティスト写真。写真がない場合はカバーを使用"
+"します。"
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "全画面のビジュアライザー"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr ""
+"再生コントロールの背後、またはその上のコンパクトな帯にビジュアライザーを表示"
+"します。"
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "動くカバー画像"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "アーティスト写真"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "再生バーの中"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "上部のコンパクトな帯"

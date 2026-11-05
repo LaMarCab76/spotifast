@@ -4675,3 +4675,72 @@ msgstr "재생목록에 다른 곡이 없습니다."
 
 #~ msgid "PulseAudio also covers PipeWire. Rodio talks to ALSA directly."
 #~ msgstr "PulseAudio는 PipeWire도 지원합니다. Rodio는 ALSA와 직접 통신합니다."
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "마우스를 올리면 재생 컨트롤 표시"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"시각화가 움직이는 동안 컨트롤을 숨깁니다. 마우스를 올리거나 Tab을 누르면 컨트"
+"롤이 표시되고 화면이 흐려집니다."
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "이전 가사 줄 수"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr ""
+"전체 화면에서 현재 줄 앞에 표시할 줄 수입니다. 스크롤하면 가사 전체를 읽을 "
+"수 있습니다."
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "다음 가사 줄 수"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "전체 화면에서 현재 줄 뒤에 표시할 줄 수입니다."
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "전체 화면 배경"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"움직이는 앨범 커버 또는 흐리게 처리한 아티스트 사진입니다. 사진이 없으면 커버"
+"를 사용합니다."
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "전체 화면 시각화"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr "재생 컨트롤 뒤 또는 그 위의 좁은 띠에 시각화를 표시합니다."
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "움직이는 앨범 커버"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "아티스트 사진"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "재생 막대 안"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "위쪽의 좁은 띠"

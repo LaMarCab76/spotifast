@@ -787,6 +787,7 @@ const HELD_COVERS: usize = 64;
 
 #[derive(Default)]
 pub struct LyricsBackdrop {
+    portrait_identity: Option<String>,
     uri: Option<String>,
     requested: bool,
     retry_at: Option<Instant>,
@@ -798,6 +799,25 @@ pub struct LyricsBackdrop {
 const BACKDROP_RETRY: Duration = Duration::from_secs(3);
 
 impl LyricsBackdrop {
+    /// A portrait must never linger after its artist changes. This identity is
+    /// separate from the URL so two artists sharing an image still invalidate
+    /// the pending receiver and the previously painted texture together.
+    pub fn portrait_texture(
+        &mut self,
+        ctx: &egui::Context,
+        loader: &ArtLoader,
+        identity: Option<(&str, &str)>,
+    ) -> Option<&egui::TextureHandle> {
+        let key = identity.map(|(artist, url)| format!("{artist}\n{url}"));
+        if self.portrait_identity != key {
+            *self = Self {
+                portrait_identity: key,
+                ..Default::default()
+            };
+        }
+        self.texture(ctx, loader, identity.map(|(_, url)| url))
+    }
+
     /// The blurred backdrop for `uri`.
     ///
     /// The artwork is fetched here, from the disk cache or the network,
@@ -815,6 +835,7 @@ impl LyricsBackdrop {
         if self.uri.as_deref() != uri {
             *self = Self {
                 uri: uri.map(str::to_owned),
+                portrait_identity: self.portrait_identity.take(),
                 texture: self.texture.take().filter(|_| uri.is_some()),
                 ..Default::default()
             };
@@ -1347,6 +1368,48 @@ mod tests {
         })
         .await
         .expect("the background writer completes while its runtime is alive");
+    }
+
+    #[test]
+    fn changing_artist_drops_the_previous_texture_and_pending_reply() {
+        let runtime = artwork_test_runtime();
+        let dir = std::env::temp_dir().join(format!("spotifast-portrait-{}", std::process::id()));
+        let loader = artwork_test_loader(&runtime, dir.clone());
+        let ctx = egui::Context::default();
+        let first = "https://i.scdn.co/image/portrait-first";
+        cached_png(&loader, first, [200, 40, 40]);
+        let mut backdrop = LyricsBackdrop::default();
+        runtime.block_on(async {
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while backdrop
+                    .portrait_texture(&ctx, &loader, Some(("artist-a", first)))
+                    .is_none()
+                {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+            })
+            .await
+            .unwrap();
+        });
+        assert!(backdrop.texture.is_some());
+        // Even when the new artist has no picture, the old artist disappears.
+        assert!(backdrop.portrait_texture(&ctx, &loader, None).is_none());
+        let (tx, rx) = std::sync::mpsc::channel();
+        backdrop.pending = Some(rx);
+        assert!(
+            backdrop
+                .portrait_texture(
+                    &ctx,
+                    &loader,
+                    Some(("artist-b", "http://127.0.0.1:9/missing"))
+                )
+                .is_none()
+        );
+        assert!(
+            tx.send(Ok(None)).is_err(),
+            "the previous receiver was discarded"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

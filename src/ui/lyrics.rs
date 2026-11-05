@@ -338,10 +338,10 @@ fn credit(locale: crate::i18n::Locale, lyrics: &crate::lyrics::Lyrics) -> Option
 
 pub fn fullscreen(app: &mut App, ui: &mut egui::Ui) {
     egui::CentralPanel::default()
-        .frame(Frame::new().fill(theme::Palette::dark().window))
+        .frame(Frame::new())
         .show(ui, |ui| {
             let rect = ui.max_rect();
-            background(app, ui, rect);
+            theme::apply_local(ui, &theme::Palette::dark());
             // The empty space is the backdrop's switch, as the player bar's
             // is its visualizer's. Everything drawn after this takes its own
             // clicks, and a drag is no click.
@@ -353,7 +353,10 @@ pub fn fullscreen(app: &mut App, ui: &mut egui::Ui) {
                 app.actions.push(Action::ToggleLyricsMilkdrop);
             }
             let top = theme::titlebar_inset(ui.ctx()) + 24.0;
-            if app.now_playing().is_some() && rect.width() >= COVER_BESIDE_MIN_WIDTH {
+            if app.now_playing().is_some()
+                && rect.width() >= COVER_BESIDE_MIN_WIDTH
+                && rect.height() >= 480.0
+            {
                 with_cover(app, ui, rect, top);
                 return;
             }
@@ -364,9 +367,10 @@ pub fn fullscreen(app: &mut App, ui: &mut egui::Ui) {
             );
             let mut content = ui.new_child(UiBuilder::new().max_rect(region));
             fullscreen_header(app, &mut content);
-            content.add_space(20.0);
+            let compact = rect.height() < 420.0;
+            content.add_space(if compact { 8.0 } else { 20.0 });
             track_heading(app, &mut content);
-            content.add_space(16.0);
+            content.add_space(if compact { 8.0 } else { 16.0 });
             fullscreen_contents(app, &mut content);
         });
 }
@@ -703,8 +707,10 @@ fn cover_opens_immersive(app: &mut App, ui: &egui::Ui, cover: Rect, art: bool) {
     let _ = (app, ui, cover, art);
 }
 
-fn background(app: &mut App, ui: &mut egui::Ui, rect: Rect) {
-    theme::apply_local(ui, &theme::Palette::dark());
+pub(super) fn fullscreen_background(app: &mut App, ui: &mut egui::Ui) {
+    let rect = ui.ctx().viewport_rect();
+    ui.painter()
+        .rect_filled(rect, 0.0, theme::Palette::dark().window);
     #[cfg(feature = "milkdrop")]
     if milkdrop_backdrop(app, ui, rect) {
         return;
@@ -713,16 +719,66 @@ fn background(app: &mut App, ui: &mut egui::Ui, rect: Rect) {
         .now_playing()
         .and_then(|now| preferred_backdrop_art(now.art_small, now.art_url));
     let painter = ui.painter().with_clip_rect(rect);
-    if let Some(texture) = app
+    let cover = app
         .lyrics_backdrop
         .texture(ui.ctx(), app.backend.art(), art.as_deref())
+        .map(|texture| (texture.id(), texture.size_vec2()));
+    let artist = (app.settings.lyrics_presentation.background
+        == crate::settings::LyricsBackground::Artist)
+        .then(|| app.lyrics_artist_image())
+        .flatten();
+    let portrait = if app.settings.lyrics_presentation.background
+        == crate::settings::LyricsBackground::Artist
     {
+        app.lyrics_artist_backdrop
+            .portrait_texture(
+                ui.ctx(),
+                app.backend.art(),
+                artist
+                    .as_ref()
+                    .map(|(uri, url)| (uri.as_str(), url.as_str())),
+            )
+            .map(|texture| (texture.id(), texture.size_vec2()))
+    } else {
+        None
+    };
+    // Reset the fade per identity; a late portrait never enters another
+    // artist's presentation. The current cover is always the loading fallback.
+    let identity = artist.as_ref().map(|(uri, url)| (uri, url));
+    let fade = ui.ctx().animate_bool_with_time(
+        egui::Id::new("lyrics-portrait-fade").with(identity),
+        portrait.is_some(),
+        crate::motion::seconds(ui.ctx(), 0.45),
+    );
+    let animate =
+        app.now_playing().is_some_and(|now| now.playing) && !crate::motion::reduced(ui.ctx());
+    let time = ui.input(|input| input.time);
+    let clock_id = egui::Id::new("lyrics-artwork-clock");
+    let mut clock = ui
+        .ctx()
+        .data(|data| data.get_temp::<BackdropMotion>(clock_id))
+        .unwrap_or_default();
+    let phase = clock.step(time, animate && (portrait.is_none() || fade < 1.0));
+    ui.ctx().data_mut(|data| data.insert_temp(clock_id, clock));
+    if let Some((texture, size)) = cover {
         painter.image(
-            texture.id(),
+            texture,
             rect,
-            cover_uv(rect.size(), texture.size_vec2()),
+            backdrop_uv(rect.size(), size, phase),
             Color32::from_gray(180),
         );
+    }
+    if let Some((texture, size)) = portrait {
+        painter.image(
+            texture,
+            rect,
+            cover_uv(rect.size(), size),
+            Color32::from_gray(180).gamma_multiply(fade),
+        );
+    }
+    if animate && portrait.is_none() {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(33));
     }
     painter.rect_filled(rect, 0.0, Color32::from_black_alpha(120));
     widgets::paint_vertical_gradient(
@@ -741,6 +797,63 @@ fn cover_uv(view: egui::Vec2, image: egui::Vec2) -> Rect {
         vec2(ratio, 1.0)
     };
     Rect::from_center_size(pos2(0.5, 0.5), size)
+}
+
+/// A paused picture retains both its zoom and phase. Re-entering motion
+/// starts at that exact frame, rather than including time spent paused or
+/// with reduced motion. A new reduced-motion session starts at phase zero.
+#[derive(Clone, Copy, Default)]
+struct BackdropMotion {
+    phase: f64,
+    last: Option<f64>,
+    advancing: bool,
+}
+
+impl BackdropMotion {
+    fn step(&mut self, now: f64, advancing: bool) -> f64 {
+        if advancing
+            && self.advancing
+            && let Some(last) = self.last
+        {
+            // A hidden/restored window must not catch up a long interval.
+            self.phase += (now - last).clamp(0.0, 0.1);
+        }
+        self.last = Some(now);
+        self.advancing = advancing;
+        self.phase
+    }
+}
+
+/// Move the crop inside a zoomed image, never revealing its outside edge.
+fn backdrop_uv(view: egui::Vec2, image: egui::Vec2, phase: f64) -> Rect {
+    let crop = cover_uv(view, image);
+    let size = crop.size() / 1.12;
+    let room = (egui::Vec2::splat(1.0) - size) * 0.5;
+    let phase = (phase * 0.075) as f32;
+    let center = pos2(
+        0.5 + room.x * 0.45 * phase.sin(),
+        0.5 + room.y * 0.45 * (phase * 0.7).cos(),
+    );
+    Rect::from_center_size(center, size)
+}
+
+/// Before the first timestamp, reserve the first entry without inventing a
+/// sung line. Empty timed entries count, and original indices remain stable.
+fn context_range(
+    len: usize,
+    active: Option<usize>,
+    previous: u8,
+    next: u8,
+) -> std::ops::Range<usize> {
+    if len == 0 {
+        return 0..0;
+    }
+    let after = usize::from(next.min(5));
+    let Some(active) = active else {
+        return 0..len.min(1 + after);
+    };
+    let active = active.min(len - 1);
+    active.saturating_sub(usize::from(previous.min(3)))..len.min(active.saturating_add(1 + after))
 }
 
 fn fullscreen_header(app: &mut App, ui: &mut egui::Ui) {
@@ -785,7 +898,11 @@ fn fullscreen_header(app: &mut App, ui: &mut egui::Ui) {
 fn track_heading(app: &mut App, ui: &mut egui::Ui) {
     if let Some(now) = app.now_playing() {
         ui.horizontal(|ui| {
-            let size = 52.0;
+            let size = if ui.available_height() < 350.0 {
+                44.0
+            } else {
+                52.0
+            };
             let (rect, _) = ui.allocate_exact_size(vec2(size, size), Sense::hover());
             widgets::playing_cover(
                 ui,
@@ -877,8 +994,6 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
     };
 
     let active = lyrics.active_line(now.position_ms);
-    // A Follow click resets the remembered line after drawing. Other frames
-    // record the shown line before any line-click action restores following.
     if !app
         .actions
         .iter()
@@ -893,120 +1008,159 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
                 || (input.pointer.primary_down() && input.pointer.delta().y != 0.0)
         });
     let following = app.lyrics_following && !manual_scroll;
-    let follow = following && app.lyrics_line_shown != Some(active);
-    let animation = crate::motion::scroll(ui.ctx(), 0.45);
-    let size = (ui.available_width() * 0.046).clamp(28.0, 42.0);
-    // The line being sung takes the theme's accent, though the view is
-    // always dark, and grows; each line wraps
-    // for its full size all along, so growing can't rewrap its words.
-    // A line takes 300 ms to light up or fade.
-    // A moving picture asks more of the quiet lines than a still one.
+    let context = following && lyrics.synced;
+    let range = if context {
+        let settings = app.settings.lyrics_presentation;
+        context_range(lyrics.lines.len(), active, settings.previous, settings.next)
+    } else {
+        0..lyrics.lines.len()
+    };
+    let context_gap = if viewport.height() < 260.0 { 8.0 } else { 18.0 };
+    let size = if context {
+        let settings = app.settings.lyrics_presentation;
+        let slots = (usize::from(settings.previous.min(3)) + 1 + usize::from(settings.next.min(5)))
+            .min(lyrics.lines.len())
+            .max(1);
+        let base = (ui.available_width() * 0.046)
+            .min(viewport.height() / (slots as f32 * 1.7))
+            .clamp(22.0, 42.0);
+        let measured: f32 = range
+            .clone()
+            .map(|index| {
+                let text = &lyrics.lines[index].text;
+                crate::bidi::layout(
+                    ui.painter(),
+                    if text.is_empty() { "\u{266a}" } else { text },
+                    theme::bold(base * SUNG_LINE_GROWTH),
+                    palette.text,
+                    ui.available_width() / SUNG_LINE_GROWTH,
+                    usize::MAX,
+                    None,
+                )
+                .size()
+                .y + context_gap
+            })
+            .sum();
+        (base * ((viewport.height() - 18.0).max(1.0) / measured.max(1.0)).min(1.0))
+            .clamp(22.0, base)
+    } else {
+        (ui.available_width() * 0.046).clamp(28.0, 42.0)
+    };
+    let shift = if context {
+        let start = range.start as f32;
+        let animated = ui.ctx().animate_value_with_time(
+            egui::Id::new("lyrics-context-position").with(&now.uri),
+            start,
+            crate::motion::seconds(ui.ctx(), 0.3),
+        );
+        (start - animated).clamp(-1.0, 1.0) * (size * 1.5 + context_gap)
+    } else {
+        0.0
+    };
     let quiet = palette
         .text
         .gamma_multiply(if app.milkdrop_behind_lyrics() {
             0.62
         } else {
-            0.42
+            0.48
         });
+    let animation = crate::motion::scroll(ui.ctx(), 0.35);
+    let follow = following && app.lyrics_line_shown != Some(active);
+    let entering_manual = manual_scroll && app.lyrics_following && lyrics.synced;
     ui.spacing_mut().scroll.fade.strength = 0.0;
-    egui::ScrollArea::vertical()
-        .id_salt(("fullscreen-lyrics-scroll", &now.uri))
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            // Before the first line there is nothing to highlight, so the
-            // panel sits at the top rather than wherever it was left.
-            if follow && lyrics.synced && active.is_none() {
-                let top = ui.cursor().min;
-                ui.scroll_to_rect_animation(
-                    egui::Rect::from_min_size(top, egui::vec2(1.0, 1.0)),
-                    Some(Align::Min),
-                    animation,
-                );
-            }
-            // Room for the first line to sit where a sung line sits, and for
-            // the last to rise to it.
-            let (padding, below) = if lyrics.synced {
-                (
-                    (viewport.height() * SUNG_LINE_AT - size).max(12.0),
-                    viewport.height() * (1.0 - SUNG_LINE_AT),
-                )
+    let mut scroll = egui::ScrollArea::vertical()
+        .id_salt(("fullscreen-lyrics-scroll", &now.uri, context))
+        .auto_shrink([false, false]);
+    if context && follow {
+        scroll = scroll.vertical_scroll_offset(0.0);
+    }
+    scroll.show(ui, |ui| {
+        if context {
+            ui.add_space(shift);
+        }
+        if !context {
+            ui.add_space(if lyrics.synced {
+                (viewport.height() * SUNG_LINE_AT - size).max(12.0)
             } else {
-                (12.0, 60.0)
+                12.0
+            });
+        }
+        for index in range.clone() {
+            let line = &lyrics.lines[index];
+            let is_active = active == Some(index);
+            let lit = ui.ctx().animate_bool_with_time(
+                egui::Id::new("lyric-line").with(("fullscreen", &now.uri, index)),
+                is_active,
+                crate::motion::seconds(ui.ctx(), 0.3),
+            );
+            let color = if lyrics.synced {
+                blend(quiet, app.palette.accent, lit)
+            } else {
+                palette.text
             };
-            ui.add_space(padding);
-            for (index, line) in lyrics.lines.iter().enumerate() {
-                let is_active = active == Some(index);
-                let lit = ui.ctx().animate_bool_with_time(
-                    egui::Id::new("lyric-line").with(("fullscreen", &now.uri, index)),
-                    is_active,
-                    crate::motion::seconds(ui.ctx(), 0.3),
-                );
-                let color = if lyrics.synced {
-                    blend(quiet, app.palette.accent, lit)
-                } else {
-                    palette.text
-                };
-                let grown = if lyrics.synced {
-                    1.0 + (SUNG_LINE_GROWTH - 1.0) * lit
-                } else {
-                    1.0
-                };
-                let wrap = ui.available_width() / SUNG_LINE_GROWTH * grown;
-                let font = theme::bold(size * grown);
-                // A timed line with no words is the band playing on.
-                let text = if line.text.is_empty() && lyrics.synced {
-                    "\u{266a}"
-                } else {
-                    line.text.as_str()
-                };
-                // Untimed words have nowhere to jump to, but a click on them
-                // is still on a line, so it must not reach the backdrop.
-                let sense = Sense::click();
-                let galley =
-                    crate::bidi::layout(ui.painter(), text, font, color, wrap, usize::MAX, None);
-                let center = ui.cursor().top() + galley.size().y * 0.5;
-                let edge = ((center - viewport.top()).min(viewport.bottom() - center)
-                    / (size * 2.0))
-                    .clamp(0.0, 1.0);
-                let response = ui
-                    .scope(|ui| {
-                        ui.multiply_opacity(edge * edge * (3.0 - 2.0 * edge));
-                        ui.add(egui::Label::new(galley).sense(sense))
-                    })
-                    .inner;
-                let rect = response.rect;
-                if lyrics.synced
-                    && response.clicked()
-                    && let Some(at_ms) = line.at_ms
-                {
-                    app.actions.push(Action::Seek(at_ms));
-                    app.actions.push(Action::FollowLyrics);
-                }
-                if is_active && follow {
-                    show_sung_line(ui, rect, Some(animation));
-                }
-                ui.add_space(27.0);
+            let grown = if lyrics.synced {
+                1.0 + (SUNG_LINE_GROWTH - 1.0) * lit
+            } else {
+                1.0
+            };
+            let text = if line.text.is_empty() && lyrics.synced {
+                "\u{266a}"
+            } else {
+                line.text.as_str()
+            };
+            let galley = crate::bidi::layout(
+                ui.painter(),
+                text,
+                theme::bold(size * grown),
+                color,
+                ui.available_width() / SUNG_LINE_GROWTH * grown,
+                usize::MAX,
+                None,
+            );
+            let response = ui.add(egui::Label::new(galley).sense(Sense::click()));
+            if lyrics.synced
+                && response.clicked()
+                && let Some(at_ms) = line.at_ms
+            {
+                app.actions.push(Action::Seek(at_ms));
+                app.actions.push(Action::FollowLyrics);
             }
-            // Words without timing can only be followed by the clock: sit
-            // at the part of the text the song is probably at.
-            if following && !lyrics.synced && now.duration_ms > 0 {
-                let fraction =
-                    (f64::from(now.position_ms) / f64::from(now.duration_ms)).clamp(0.0, 1.0);
-                let content = ui.min_rect();
-                let y = content.top() + content.height() * fraction as f32;
-                ui.scroll_to_rect_animation(
-                    egui::Rect::from_min_max(
-                        egui::pos2(content.left(), y),
-                        egui::pos2(content.right(), y + 1.0),
-                    ),
-                    Some(Align::Center),
-                    animation,
+            if is_active && (entering_manual || (!context && follow)) {
+                show_sung_line(
+                    ui,
+                    response.rect,
+                    if entering_manual {
+                        Some(egui::style::ScrollAnimation::none())
+                    } else {
+                        Some(animation)
+                    },
                 );
             }
-            ui.add_space(below.max(60.0));
-        });
-    // Scrolling by hand means the reader wants to look elsewhere; the
-    // Follow button in the header picks the song back up.
+            // A long previous line must not push the current one outside the
+            // context viewport. Scroll only if the current line cannot fit.
+            if context && is_active && follow && response.rect.bottom() > viewport.bottom() {
+                ui.scroll_to_rect(response.rect, Some(Align::Center));
+            }
+            ui.add_space(if context { context_gap } else { 27.0 });
+        }
+        if let Some(source) = credit(app.locale, &lyrics) {
+            theme::text(ui, source, theme::regular(12.0), palette.dim);
+        }
+        if !context && following && !lyrics.synced && now.duration_ms > 0 {
+            let fraction =
+                (f64::from(now.position_ms) / f64::from(now.duration_ms)).clamp(0.0, 1.0);
+            let content = ui.min_rect();
+            let y = content.top() + content.height() * fraction as f32;
+            ui.scroll_to_rect_animation(
+                Rect::from_min_max(pos2(content.left(), y), pos2(content.right(), y + 1.0)),
+                Some(Align::Center),
+                animation,
+            );
+        }
+        if !context {
+            ui.add_space((viewport.height() * (1.0 - SUNG_LINE_AT)).max(60.0));
+        }
+    });
     if manual_scroll && app.lyrics_following {
         app.actions.push(Action::PauseLyricsFollow);
     }
@@ -1028,6 +1182,74 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
 #[cfg(test)]
 mod tests {
     use super::{credit, fullscreen_content_width, preferred_backdrop_art};
+
+    #[test]
+    fn lyrics_context_keeps_indices_and_handles_the_edges() {
+        use super::context_range;
+        assert_eq!(context_range(0, Some(0), 1, 2), 0..0);
+        assert_eq!(context_range(10, None, 1, 2), 0..3);
+        assert_eq!(context_range(10, Some(0), 1, 2), 0..3);
+        assert_eq!(context_range(10, Some(5), 1, 2), 4..8);
+        assert_eq!(context_range(10, Some(9), 1, 2), 8..10);
+        assert_eq!(context_range(2, Some(1), 3, 5), 0..2);
+        assert_eq!(context_range(10, Some(5), 0, 0), 5..6);
+        assert_eq!(context_range(10, Some(5), 255, 255), 2..10);
+    }
+
+    #[test]
+    fn moving_background_never_exposes_an_edge() {
+        use super::backdrop_uv;
+        for view in [egui::vec2(760.0, 520.0), egui::vec2(1920.0, 1080.0)] {
+            for image in [egui::vec2(640.0, 640.0), egui::vec2(1200.0, 500.0)] {
+                for phase in [0.0, 1.0, 60.0, 120.0, 9999.0] {
+                    let uv = backdrop_uv(view, image, phase);
+                    assert!(
+                        uv.left() >= 0.0
+                            && uv.right() <= 1.0
+                            && uv.top() >= 0.0
+                            && uv.bottom() <= 1.0
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn background_pause_resume_and_reduced_motion_preserve_the_exact_crop() {
+        use super::{BackdropMotion, backdrop_uv};
+        let view = egui::vec2(1280.0, 800.0);
+        let image = egui::vec2(640.0, 640.0);
+        let crop = |phase| backdrop_uv(view, image, phase);
+        let mut clock = BackdropMotion::default();
+        let initial = crop(clock.step(10.0, true));
+        let playing = crop(clock.step(10.033, true));
+        assert_ne!(playing, initial);
+        for time in [10.066, 12.0, 20.0] {
+            assert_eq!(
+                crop(clock.step(time, false)),
+                playing,
+                "pause freezes the last frame"
+            );
+        }
+        assert_eq!(
+            crop(clock.step(60.0, true)),
+            playing,
+            "resume begins at the paused frame"
+        );
+        let resumed = crop(clock.step(60.033, true));
+        assert_ne!(resumed, playing);
+        for time in [60.066, 70.0, 120.0] {
+            assert_eq!(
+                crop(clock.step(time, false)),
+                resumed,
+                "reduced motion freezes the last frame"
+            );
+        }
+        assert_eq!(crop(clock.step(121.0, true)), resumed);
+        let mut still = BackdropMotion::default();
+        assert_eq!(crop(still.step(500.0, false)), initial);
+        assert_eq!(crop(still.step(9999.0, false)), initial);
+    }
 
     #[test]
     fn the_words_credit_who_they_come_from() {

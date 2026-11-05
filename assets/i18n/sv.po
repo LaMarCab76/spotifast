@@ -4743,3 +4743,73 @@ msgstr "Inget mer står i kön."
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "Minska låttextrörelse"
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "Visa uppspelningskontroller vid hovring"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"Dölj kontrollerna medan visualiseringen rör sig. För musen över fältet eller "
+"tryck på Tab för att visa dem och göra bilden oskarp."
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "Föregående textrader"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr ""
+"Rader före den aktuella raden i helskärm. Rulla för att läsa hela låttexten."
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "Nästa textrader"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "Rader efter den aktuella raden i helskärm."
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "Helskärmsbakgrund"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"Animerat omslag eller ett oskarpt artistfoto. Omslaget används om fotot "
+"saknas."
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "Helskärmsvisualisering"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr ""
+"Visa visualiseringen bakom uppspelningskontrollerna eller i en kompakt remsa "
+"ovanför."
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "Animerat omslag"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "Artistfoto"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "I uppspelningsfältet"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "Kompakt remsa ovanför"

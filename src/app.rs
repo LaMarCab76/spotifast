@@ -672,6 +672,7 @@ pub struct App {
     lyrics_fullscreen_restoring: Option<bool>,
     lyrics_restore_maximized: bool,
     pub lyrics_backdrop: crate::images::LyricsBackdrop,
+    pub lyrics_artist_backdrop: crate::images::LyricsBackdrop,
     pub softened_covers: crate::images::SoftenedCovers,
     /// The track the lyrics below are for.
     pub lyrics_uri: Option<String>,
@@ -1396,6 +1397,7 @@ impl App {
             lyrics_fullscreen_restoring: None,
             lyrics_restore_maximized: false,
             lyrics_backdrop: Default::default(),
+            lyrics_artist_backdrop: Default::default(),
             softened_covers: Default::default(),
             lyrics_uri: None,
             lyrics_retries: 0,
@@ -4479,6 +4481,7 @@ impl App {
 
     fn tick(&mut self, ctx: &egui::Context) {
         self.poll_custom_themes(ctx);
+        self.request_lyrics_artist();
         self.retry_soloist_when_due(ctx);
         if self.queued_play.is_some() && self.soloist_waiting() && !self.soloist_recovering() {
             self.soloist_give_up();
@@ -7885,6 +7888,42 @@ impl App {
         if self.is_saved(&uri).is_none() {
             self.request_contains(vec![uri]);
         }
+    }
+
+    /// Only the artist overview is needed for a lyrics background. The read's
+    /// existing identity, cooldown and TTL also cover reconnects and late replies.
+    fn request_lyrics_artist(&mut self) {
+        if self.lyrics_fullscreen.is_some()
+            && self.settings.lyrics_presentation.background
+                == crate::settings::LyricsBackground::Artist
+            && let Some(uri) = self.lyrics_artist_uri()
+        {
+            self.request_play_counts(&uri);
+        }
+    }
+
+    pub fn lyrics_artist_uri(&self) -> Option<String> {
+        let now = self.now_playing()?;
+        if now.is_episode || now.uri.starts_with("spotify:local:") {
+            return None;
+        }
+        now.artists.first().and_then(crate::ui::artist_uri)
+    }
+
+    /// Uses the same portraits as Now playing, without requesting unrelated
+    /// follow status or resolving artist names to possibly different people.
+    pub fn lyrics_artist_image(&self) -> Option<(String, String)> {
+        let uri = self.lyrics_artist_uri()?;
+        let avatar = self
+            .artist_profiles
+            .get(&uri)
+            .and_then(|profile| profile.avatar.clone())
+            .or_else(|| {
+                self.known_artist(uri.strip_prefix("spotify:artist:")?)
+                    .and_then(|artist| crate::api::models::pick_image(&artist.images, 640))
+                    .map(str::to_owned)
+            })?;
+        Some((uri, avatar))
     }
 
     /// Whether Spotify's play counts for the album or artist `uri` arrived,
@@ -13604,6 +13643,18 @@ impl App {
             }
             Action::OpenThemesFolder => {
                 self.backend.send(Command::OpenThemesFolder);
+            }
+            Action::SetPlayerBarAutoHide(hide) => {
+                self.settings.player_bar_auto_hide = hide;
+                self.mark_settings_dirty();
+            }
+            Action::SetLyricsPresentation(mut presentation) => {
+                presentation.previous = presentation.previous.min(3);
+                presentation.next = presentation.next.min(5);
+                self.settings.lyrics_presentation = presentation;
+                self.lyrics_line_shown = None;
+                self.mark_settings_dirty();
+                self.request_lyrics_artist();
             }
             Action::SettingsChanged => {
                 self.settings_dirty = true;

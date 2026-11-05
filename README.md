@@ -28,6 +28,11 @@ framework behind a family of native desktop apps. It plays music through
 The interface includes complete
 [translations for all supported languages](docs/_reference/translating.md#languages-and-coverage).
 
+Full-screen lyrics keep the current line in a configurable context, with
+animated cover art or an artist portrait behind them. The player offers a
+slower spectrum, optional hover controls, full-width seeking and a compact
+visualizer strip. See [Using Spotifast](docs/_guide/using-spotifast.md#lyrics).
+
 **Playback needs Spotify Premium.** Free accounts can browse and search, but
 cannot play music through Spotifast.
 

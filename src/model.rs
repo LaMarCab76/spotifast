@@ -1384,6 +1384,8 @@ pub enum Action {
     DownloadUpdate,
     InstallUpdate,
     SettingsChanged,
+    SetPlayerBarAutoHide(bool),
+    SetLyricsPresentation(crate::settings::LyricsPresentation),
     SetTheme(crate::settings::ThemeChoice),
     /// Draw the interface in this language from the next frame on.
     SetLanguage(crate::settings::LanguageChoice),

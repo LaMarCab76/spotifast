@@ -92,6 +92,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ),
         );
     }
+    if app.lyrics_fullscreen.is_some() {
+        lyrics::fullscreen_background(app, ui);
+    }
     player_bar::show(app, ui);
     if app.lyrics_fullscreen.is_some() {
         lyrics::fullscreen(app, ui);

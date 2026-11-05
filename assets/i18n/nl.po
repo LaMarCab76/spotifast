@@ -4781,3 +4781,74 @@ msgstr "Er staat verder niets in de wachtrij."
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "Songtekstbeweging verminderen"
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "Bediening tonen bij aanwijzen"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"Verberg de bediening terwijl de visualisatie beweegt. Wijs de balk aan of "
+"druk op Tab om de bediening te tonen en het beeld te vervagen."
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "Vorige songtekstregels"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr ""
+"Regels vóór de huidige regel op volledig scherm. Scrol om de volledige "
+"songtekst te lezen."
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "Volgende songtekstregels"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "Regels na de huidige regel op volledig scherm."
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "Achtergrond op volledig scherm"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"Bewegende hoes of een vervaagde artiestenfoto. Zonder foto wordt de hoes "
+"gebruikt."
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "Visualisatie op volledig scherm"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr ""
+"Toon de visualisatie achter de afspeelbediening of in een compacte strook "
+"erboven."
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "Bewegende hoes"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "Artiestenfoto"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "In de afspeelbalk"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "Compacte strook erboven"

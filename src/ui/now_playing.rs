@@ -455,7 +455,8 @@ fn next_up(app: &mut App, ui: &mut egui::Ui) {
         ui.add_space(6.0);
         match next {
             Some(item) => {
-                let context = RowContext::Uris(std::sync::Arc::from([item.uri().to_string()]));
+                // The queue's own first row: playing it moves through the
+                // queue and keeps what follows, as the Queue panel does.
                 widgets::track_row(
                     ui,
                     app,
@@ -463,7 +464,7 @@ fn next_up(app: &mut App, ui: &mut egui::Ui) {
                         index: 0,
                         number: None,
                         item: &item,
-                        context: &context,
+                        context: &RowContext::Queue,
                         show_cover: true,
                         show_album: false,
                         added_at: None,

@@ -89,7 +89,11 @@ clients. Spotifast uses its session for:
   service Spotify's own clients edit, so the other copies keep their place
   and dates. Without local playback it refuses that removal instead of taking
   every copy.
-- **Lyrics** when Spotify has them.
+- **Lyrics** when Spotify has them. Spotify names the company it licenses
+  them from, Musixmatch for most songs, and the lyrics panel credits it.
+  When Spotify's words carry no timing, LRCLIB's timed words replace them
+  if they were timed to a recording of the same length, within three
+  seconds.
 - **Artist popular tracks.** The account's market-specific ranking and batched
   track details, with the Web API as fallback when the session cannot
   supply them. This uses librespot's existing metadata support.

@@ -4751,34 +4751,64 @@ impl Worker {
         let cache_dir = self.dirs.lyrics_cache_dir();
         let engine = self.engine.clone();
         tokio::spawn(async move {
+            use crate::lyrics::Source;
+            let LyricsRequest {
+                uri,
+                query,
+                local_file,
+            } = request;
+            let send = |result| {
+                let _ = events.send(Event::Lyrics {
+                    uri: uri.clone(),
+                    result,
+                });
+                waker.wake();
+            };
             // A local file's own words go first, then Spotify's: they
             // follow the recording exactly. Everything else, a signed-out
             // session included, falls back to LRCLIB.
-            let own = match request.local_file {
+            let own = match local_file {
                 Some(file) => tokio::task::spawn_blocking(move || crate::local_tags::lyrics(&file))
                     .await
                     .ok()
-                    .flatten(),
+                    .flatten()
+                    .map(|found| found.from_source(Source::File)),
                 None => None,
             };
             let exact = match own {
                 Some(found) => Some(found),
-                None => spotify_lyrics(engine, &request.uri, &cache_dir).await,
+                None => spotify_lyrics(engine, &uri, &cache_dir)
+                    .await
+                    .map(|found| found.from_source(Source::Spotify { provider: None })),
             };
-            let result = match exact {
-                Some(found) => Ok(Some(found)),
-                None => match http {
-                    Ok(http) => crate::lyrics::fetch(&http, &cache_dir, &request.query)
+            let lrclib = |http: reqwest::Client| {
+                let cache_dir = cache_dir.clone();
+                let query = query.clone();
+                async move {
+                    crate::lyrics::fetch(&http, &cache_dir, &query)
                         .await
-                        .map_err(|error| format!("{error:#}")),
-                    Err(error) => Err(error),
-                },
+                        .map(|found| found.map(|found| found.from_source(Source::Lrclib)))
+                }
             };
-            let _ = events.send(Event::Lyrics {
-                uri: request.uri,
-                result,
-            });
-            waker.wake();
+            match exact {
+                // Untimed words show at once. LRCLIB's timed words for the
+                // same recording take their place when they come; a miss
+                // or a failure there leaves the words already shown.
+                Some(found) if !found.synced && !found.instrumental => {
+                    send(Ok(Some(found.clone())));
+                    if let Ok(http) = http
+                        && let Ok(Some(timed)) = lrclib(http).await
+                        && found.yields_to(&timed, &query)
+                    {
+                        send(Ok(Some(timed)));
+                    }
+                }
+                Some(found) => send(Ok(Some(found))),
+                None => send(match http {
+                    Ok(http) => lrclib(http).await.map_err(|error| format!("{error:#}")),
+                    Err(error) => Err(error),
+                }),
+            }
         });
     }
 

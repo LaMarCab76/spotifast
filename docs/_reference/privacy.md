@@ -55,8 +55,9 @@ Spotifast connects only to the services below.
   cannot, the Web API is asked for the followed artists and their latest
   albums. The shelf is saved in the same Home cache.
 - **LRCLIB.** When the lyrics panel is open and neither Spotify nor, for a
-  local file, the file itself has lyrics for the song, Spotifast sends its
-  artist, title, album and length to [lrclib.net](https://lrclib.net).
+  local file, the file itself has lyrics for the song, or the words they
+  have carry no timing, Spotifast sends its artist, title, album and length
+  to [lrclib.net](https://lrclib.net).
   Nothing identifying you is included. Short overloads are retried within a
   20-second lookup budget, respecting `Retry-After`; search can recover when
   the exact lookup is temporarily unavailable. A failed lookup can use older

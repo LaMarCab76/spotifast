@@ -501,6 +501,7 @@ fastframe_icons::icons! {
         Pause => lucide "pause",
         PauseFilled => "pause-filled",
         PanelLeft => lucide "panel-left",
+        PanelRight => "panel-right",
         Pin => lucide "pin",
         PinOff => lucide "pin-off",
         Pencil => lucide "pencil",

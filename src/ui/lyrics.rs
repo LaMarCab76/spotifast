@@ -45,7 +45,7 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
         app.settings.lyrics_width,
         ui.available_width() - super::topbar::least_width(ui.ctx()),
     );
-    let panel = egui::Panel::right("lyrics-panel")
+    let panel = super::docked_panel("lyrics-panel", super::panels_on_left(app))
         .resizable(true)
         .default_size(app.settings.lyrics_width)
         .size_range(fit.range.clone())
@@ -56,13 +56,12 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                 .inner_margin(Margin::symmetric(12, 12)),
         );
     let response = panel.show(ui, |ui| {
-        let window_controls = super::window_controls_reservation(
-            ui.ctx(),
-            app.show_queue_panel,
-            app.show_lyrics_panel,
-            ui.available_width(),
+        let window_controls =
+            super::window_controls_reservation(ui.ctx(), app, ui.available_width());
+        ui.add_space(
+            window_controls.lyrics_top
+                + super::left_corner_inset(ui.ctx(), app, super::Header::Lyrics),
         );
-        ui.add_space(window_controls.lyrics_top);
         ui.horizontal(|ui| {
             ui.add_space(4.0);
             theme::text(

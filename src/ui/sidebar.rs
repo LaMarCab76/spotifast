@@ -543,12 +543,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     let expanded_art = has_expanded_art(app);
     let floating_art = app.settings.sidebar_grid && expanded_art;
-    // The traffic lights float over the top-left of the sidebar now, so the
-    // first nav row has to start below them.
+    // On the left, the traffic lights float over the top of the sidebar, so
+    // the first nav row starts below them; on the right, the caption buttons
+    // do.
+    let on_right = super::panels_on_left(app);
+    let header = super::Header::Sidebar;
     let top = 12
-        + theme::titlebar_inset(ui.ctx()) as i8
-        + super::linux_left_controls_inset(ui.ctx()) as i8;
-    let beside = if app.show_queue_panel || app.show_lyrics_panel || app.show_friends_panel {
+        + super::left_corner_inset(ui.ctx(), app, header) as i8
+        + super::window_controls_reservation(ui.ctx(), app, 0.0).sidebar_top as i8;
+    let beside = if super::side_panel_open(app) {
         theme::SIDE_PANEL_MIN_WIDTH
     } else {
         0.0
@@ -560,14 +563,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         app.settings.sidebar_width,
         ui.available_width() - super::topbar::least_width(ui.ctx()) - beside,
     );
-    let panel = egui::Panel::left("sidebar")
+    // The narrower margin is the one beside the resize handle.
+    let (outer, inner) = (12, 8);
+    let panel = super::docked_panel("sidebar", !on_right)
         .resizable(true)
         .default_size(app.settings.sidebar_width)
         .size_range(fit.range.clone())
         .show_separator_line(false)
         .frame(Frame::new().fill(palette.panel).inner_margin(Margin {
-            left: 12,
-            right: 8,
+            left: if on_right { inner } else { outer },
+            right: if on_right { outer } else { inner },
             top,
             bottom: if expanded_art { 0 } else { 8 },
         }));
@@ -1091,7 +1096,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
             ui.spacing_mut().item_spacing.x = 2.0;
             if theme::icon_button(
                 ui,
-                Icon::PanelLeft,
+                super::sidebar_icon(app),
                 16.0,
                 palette.secondary,
                 palette.text,

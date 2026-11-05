@@ -151,7 +151,7 @@ fn keep_room_for_panels(app: &App, ctx: &Context) {
     let width = main_min_width(
         topbar::least_width(ctx),
         panels && app.settings.sidebar_visible,
-        panels && (app.show_queue_panel || app.show_lyrics_panel || app.show_friends_panel),
+        panels && side_panel_open(app),
     )
     .round();
     let id = Id::new("main-min-width");
@@ -604,15 +604,102 @@ pub(super) struct WindowControlsReservation {
     pub topbar_top: f32,
     pub queue_top: f32,
     pub lyrics_top: f32,
+    pub sidebar_top: f32,
 }
 
-/// The caption buttons on the right belong to the outermost header: the
-/// queue's or the lyrics' when either panel is open, otherwise the top bar,
+/// Whether the queue, lyrics and listening activity open on the left, with
+/// the library on the right.
+pub(crate) fn panels_on_left(app: &App) -> bool {
+    app.settings.panel_side == crate::settings::PanelSide::Left
+}
+
+/// Whether one of the panels beside the page is open. They share one
+/// place, on the side the person chose.
+pub(crate) fn side_panel_open(app: &App) -> bool {
+    app.show_queue_panel || app.show_lyrics_panel || app.show_friends_panel
+}
+
+/// A resizable panel docked on the left or the right of the window.
+pub(crate) fn docked_panel(id: &'static str, left: bool) -> egui::Panel {
+    if left {
+        egui::Panel::left(id)
+    } else {
+        egui::Panel::right(id)
+    }
+}
+
+/// The library's hide and show icon: the panel on its side of the window.
+pub(crate) fn sidebar_icon(app: &App) -> Icon {
+    if panels_on_left(app) {
+        Icon::PanelRight
+    } else {
+        Icon::PanelLeft
+    }
+}
+
+/// The header under one of the window's top corners, where the window's own
+/// buttons sit: the outermost panel on that side, or the top bar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Header {
+    TopBar,
+    Sidebar,
+    /// The queue, or listening activity in its place.
+    Queue,
+    Lyrics,
+}
+
+/// The header under the left corner when `left_corner`, the right one
+/// otherwise. The library is outermost on its side; the side panels take
+/// the other.
+fn corner_header_for(
+    panels_left: bool,
+    sidebar: bool,
+    queue: bool,
+    lyrics: bool,
+    left_corner: bool,
+) -> Header {
+    if panels_left == left_corner {
+        if queue {
+            Header::Queue
+        } else if lyrics {
+            Header::Lyrics
+        } else {
+            Header::TopBar
+        }
+    } else if sidebar {
+        Header::Sidebar
+    } else {
+        Header::TopBar
+    }
+}
+
+pub(super) fn corner_header(app: &App, left_corner: bool) -> Header {
+    corner_header_for(
+        panels_on_left(app),
+        app.settings.sidebar_visible,
+        app.show_queue_panel || app.show_friends_panel,
+        app.show_lyrics_panel,
+        left_corner,
+    )
+}
+
+/// The room `header` leaves above its contents for the controls at the
+/// window's top-left: macOS's traffic lights, or a Linux desktop's buttons
+/// on the left. Only the header under that corner leaves it.
+pub(super) fn left_corner_inset(ctx: &egui::Context, app: &App, header: Header) -> f32 {
+    if corner_header(app, true) == header {
+        theme::titlebar_inset(ctx) + linux_left_controls_inset(ctx)
+    } else {
+        0.0
+    }
+}
+
+/// The caption buttons on the right belong to the outermost header there:
+/// the library's, the queue's or the lyrics', otherwise the top bar's,
 /// beside its controls or above them when the page is too narrow.
 fn controls_reservation(
     footprint: fastframe_titlebar::Footprint,
-    queue: bool,
-    lyrics: bool,
+    header: Header,
     topbar_width: f32,
 ) -> WindowControlsReservation {
     let mut space = WindowControlsReservation {
@@ -620,18 +707,20 @@ fn controls_reservation(
         topbar_top: 0.0,
         queue_top: 0.0,
         lyrics_top: 0.0,
+        sidebar_top: 0.0,
     };
     if footprint.right <= 0.0 {
         return space;
     }
-    if queue {
-        space.queue_top = footprint.height;
-    } else if lyrics {
-        space.lyrics_top = footprint.height;
-    } else {
-        let reserve = footprint.reserve(topbar_width, TOPBAR_MIN_CONTENT);
-        space.topbar_width = reserve.inline_width;
-        space.topbar_top = reserve.push_down;
+    match header {
+        Header::Sidebar => space.sidebar_top = footprint.height,
+        Header::Queue => space.queue_top = footprint.height,
+        Header::Lyrics => space.lyrics_top = footprint.height,
+        Header::TopBar => {
+            let reserve = footprint.reserve(topbar_width, TOPBAR_MIN_CONTENT);
+            space.topbar_width = reserve.inline_width;
+            space.topbar_top = reserve.push_down;
+        }
     }
     space
 }
@@ -651,14 +740,12 @@ pub(super) fn linux_left_controls_inset(ctx: &egui::Context) -> f32 {
 
 pub(super) fn window_controls_reservation(
     ctx: &egui::Context,
-    queue: bool,
-    lyrics: bool,
+    app: &App,
     topbar_width: f32,
 ) -> WindowControlsReservation {
     controls_reservation(
         fastframe_titlebar::footprint(ctx, theme::CUSTOM_TOP_BAR_HEIGHT),
-        queue,
-        lyrics,
+        corner_header(app, false),
         topbar_width,
     )
 }
@@ -777,40 +864,76 @@ mod window_chrome_tests {
 
     #[test]
     fn caption_space_belongs_to_the_outermost_header() {
-        let values = |footprint, queue, lyrics| {
-            let space = controls_reservation(footprint, queue, lyrics, f32::INFINITY);
+        let values = |footprint, header| {
+            let space = controls_reservation(footprint, header, f32::INFINITY);
             [
                 space.topbar_width,
                 space.topbar_top,
                 space.queue_top,
                 space.lyrics_top,
+                space.sidebar_top,
             ]
         };
         let [width, height] = [BUTTONS.right, BUTTONS.height];
-        assert_eq!(values(BUTTONS, false, false), [width, 0.0, 0.0, 0.0]);
-        assert_eq!(values(BUTTONS, true, false), [0.0, 0.0, height, 0.0]);
-        assert_eq!(values(BUTTONS, false, true), [0.0, 0.0, 0.0, height]);
-        assert_eq!(values(BUTTONS, true, true), [0.0, 0.0, height, 0.0]);
+        assert_eq!(values(BUTTONS, Header::TopBar), [width, 0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(values(BUTTONS, Header::Queue), [0.0, 0.0, height, 0.0, 0.0]);
+        assert_eq!(
+            values(BUTTONS, Header::Lyrics),
+            [0.0, 0.0, 0.0, height, 0.0]
+        );
+        assert_eq!(
+            values(BUTTONS, Header::Sidebar),
+            [0.0, 0.0, 0.0, 0.0, height]
+        );
         // No buttons on the right: full screen, the native frame, macOS's
         // traffic lights, or a GNOME layout with them all on the left.
         let none = Footprint {
             left: 50.0,
             ..Footprint::default()
         };
-        for (queue, lyrics) in [(false, false), (true, false), (false, true)] {
-            assert_eq!(values(none, queue, lyrics), [0.0; 4]);
+        for header in [
+            Header::TopBar,
+            Header::Queue,
+            Header::Lyrics,
+            Header::Sidebar,
+        ] {
+            assert_eq!(values(none, header), [0.0; 5]);
+        }
+    }
+
+    /// The library is outermost on its side and an open side panel on the
+    /// other; with neither, the top bar reaches that corner.
+    #[test]
+    fn each_corner_belongs_to_the_panel_on_its_side() {
+        use Header::*;
+        // (panels left, sidebar, queue, lyrics) -> (left corner, right corner)
+        for (panels_left, sidebar, queue, lyrics, left, right) in [
+            (false, true, false, false, Sidebar, TopBar),
+            (false, true, true, false, Sidebar, Queue),
+            (false, false, false, true, TopBar, Lyrics),
+            (true, true, false, false, TopBar, Sidebar),
+            (true, true, true, false, Queue, Sidebar),
+            (true, false, false, true, Lyrics, TopBar),
+            (true, false, true, true, Queue, TopBar),
+        ] {
+            let header = |corner| corner_header_for(panels_left, sidebar, queue, lyrics, corner);
+            assert_eq!(
+                (header(true), header(false)),
+                (left, right),
+                "panels left {panels_left}, sidebar {sidebar}, queue {queue}, lyrics {lyrics}"
+            );
         }
     }
 
     #[test]
     fn minimum_windows_window_stacks_caption_space_above_the_topbar() {
         let available = 760.0 - 250.0;
-        let space = controls_reservation(BUTTONS, false, false, available);
+        let space = controls_reservation(BUTTONS, Header::TopBar, available);
         assert_eq!(space.topbar_width, 0.0);
         assert_eq!(space.topbar_top, BUTTONS.height);
 
         let inline =
-            controls_reservation(BUTTONS, false, false, TOPBAR_MIN_CONTENT + BUTTONS.right);
+            controls_reservation(BUTTONS, Header::TopBar, TOPBAR_MIN_CONTENT + BUTTONS.right);
         assert_eq!(inline.topbar_width, BUTTONS.right);
         assert_eq!(inline.topbar_top, 0.0);
     }

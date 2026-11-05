@@ -3312,6 +3312,63 @@ mod tests {
 
     /// Spotify lists audiobooks among saved shows, but librespot can't play
     /// them, so the Podcasts shelf leaves out any show marked as one.
+    /// The next song in Now playing is the queue's own first row: playing
+    /// it moves through the queue instead of starting it on its own.
+    #[test]
+    fn now_playings_next_song_plays_through_the_queue() {
+        use egui::accesskit::{Action as AccessibleAction, Role};
+        let (ctx, mut app) = accessible_app("now-playing-next-up");
+        app.show_now_playing_panel = true;
+        let next = match &app.queue {
+            Loadable::Loaded(queue) => queue.queue.first().cloned(),
+            _ => None,
+        }
+        .expect("the demo queues songs");
+        let label = format!("Play {}, {}", next.name(), next.subtitle());
+        let render = |app: &mut App, events| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1240.0, 2000.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| crate::ui::now_playing::side_panel(app, ui),
+            );
+            output.textures_delta.clear();
+            output
+                .platform_output
+                .accesskit_update
+                .expect("screen-reader tree")
+        };
+        render(&mut app, vec![]);
+        let tree = render(&mut app, vec![]);
+        let row = accessible_node(&tree, &label, Role::Button);
+        app.actions.clear();
+        render(
+            &mut app,
+            vec![accessible_action(row, AccessibleAction::Click, None)],
+        );
+        let played = app.actions.iter().find_map(|action| match action {
+            crate::model::Action::PlayFromRow {
+                context,
+                uri,
+                index,
+            } => Some((context.clone(), uri.clone(), *index)),
+            _ => None,
+        });
+        assert!(
+            matches!(
+                &played,
+                Some((RowContext::Queue, uri, 0)) if uri == next.uri()
+            ),
+            "{played:?}"
+        );
+        app.backend.shutdown();
+    }
+
     #[test]
     fn now_playing_shows_the_song_its_artist_and_what_comes_next() {
         let (ctx, mut app) = accessible_app("now-playing-panel");

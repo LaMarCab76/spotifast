@@ -4804,3 +4804,74 @@ msgstr "W kolejce nie ma nic więcej."
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "Ogranicz animacje tekstu"
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "Pokazuj sterowanie po najechaniu kursorem"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"Ukrywa sterowanie, gdy wizualizacja się porusza. Najedź kursorem lub "
+"naciśnij Tab, aby je pokazać i rozmyć obraz."
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "Poprzednie wiersze tekstu"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr ""
+"Wiersze przed bieżącym wierszem na pełnym ekranie. Przewiń, aby przeczytać "
+"cały tekst."
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "Następne wiersze tekstu"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "Wiersze po bieżącym wierszu na pełnym ekranie."
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "Tło pełnego ekranu"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"Animowana okładka lub rozmyte zdjęcie wykonawcy. Gdy brakuje zdjęcia, "
+"używana jest okładka."
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "Wizualizacja na pełnym ekranie"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr ""
+"Pokazuje wizualizację za przyciskami odtwarzania lub w kompaktowym pasku nad "
+"nimi."
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "Animowana okładka"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "Zdjęcie wykonawcy"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "W pasku odtwarzania"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "Kompaktowy pasek powyżej"

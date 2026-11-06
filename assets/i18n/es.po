@@ -4789,3 +4789,74 @@ msgstr "No hay nada más en la cola."
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "Reducir movimiento de la letra"
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "Mostrar controles al pasar el mouse"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"Oculta los controles mientras se mueve el visualizador. Pasa el mouse o "
+"pulsa Tab para mostrarlos y desenfocar la imagen."
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "Líneas anteriores de la letra"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr ""
+"Líneas anteriores a la actual en pantalla completa. Desplázate para leer la "
+"letra completa."
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "Líneas siguientes de la letra"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "Líneas posteriores a la actual en pantalla completa."
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "Fondo de pantalla completa"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"Portada animada o foto desenfocada del artista. Si no hay foto, se usa la "
+"portada."
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "Visualizador de pantalla completa"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr ""
+"Muestra el visualizador detrás de los controles de reproducción o en una "
+"franja compacta encima."
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "Portada animada"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "Foto del artista"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "Dentro de la barra de reproducción"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "Franja compacta encima"

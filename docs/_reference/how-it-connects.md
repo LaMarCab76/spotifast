@@ -867,3 +867,11 @@ Previously loaded recommendations remain visible. This is not a permanent
 capability decision: refreshing Home tries the request again. Network, sign-in,
 rate-limit and server errors retain their normal error handling. No alternate
 recommendation source is substituted.
+
+The optional artist-photo background in full-screen lyrics reuses the first
+artist's overview read and the existing artwork loader. Opening that view or
+changing songs checks the same pending-read guard, retry delay and ten-minute
+refresh window as Now playing. It does not request follow status. A missing
+portrait, offline session, episode or local file without a Spotify artist
+keeps the album art behind the lyrics. Delayed results are cached by artist;
+a previous artist's portrait is never shown behind the current song.

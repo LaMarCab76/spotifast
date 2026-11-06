@@ -4793,3 +4793,74 @@ msgstr "Nient’altro in coda."
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "Riduci animazioni del testo"
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "Mostra i controlli al passaggio del mouse"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"Nasconde i controlli mentre la visualizzazione si muove. Passa il mouse "
+"sulla barra o premi Tab per mostrarli e sfocare l’immagine."
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "Righe di testo precedenti"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr ""
+"Righe prima di quella attuale a schermo intero. Scorri per leggere tutto il "
+"testo."
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "Righe di testo successive"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "Righe dopo quella attuale a schermo intero."
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "Sfondo a schermo intero"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"Copertina animata o foto sfocata dell’artista. Se la foto manca, viene usata "
+"la copertina."
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "Visualizzazione a schermo intero"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr ""
+"Mostra la visualizzazione dietro i controlli di riproduzione o in una "
+"striscia compatta sopra di essi."
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "Copertina animata"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "Foto dell’artista"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "Nella barra di riproduzione"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "Striscia compatta sopra"

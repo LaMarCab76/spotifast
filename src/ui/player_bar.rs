@@ -43,38 +43,133 @@ pub(crate) fn end_tint_session(ctx: &egui::Context) {
     ctx.data_mut(|data| data.remove::<u64>(egui::Id::new(TINT_SESSION_ID)));
 }
 
+/// Full-screen progress has its own row; the normal player keeps its 88 px.
+const FULLSCREEN_BAR_HEIGHT: f32 = 112.0;
+const STRIP_HEIGHT: f32 = 92.0;
+const REVEAL_GRACE: f64 = 0.4;
+
+#[derive(Clone, Copy, Default)]
+struct ControlsReveal {
+    until: f64,
+    dragging: bool,
+    shown: bool,
+}
+
+fn controls_visible(auto_hide: bool, moving: bool, engaged: bool, grace: bool) -> bool {
+    !auto_hide || !moving || engaged || grace
+}
+
+fn reveal_controls(app: &App, ctx: &egui::Context, bar: Rect, moving: bool) -> (bool, bool) {
+    let id = egui::Id::new("player-bar-reveal");
+    let mut state = ctx
+        .data(|data| data.get_temp::<ControlsReveal>(id))
+        .unwrap_or_default();
+    let (time, hovered, pressed, down, keyboard) = ctx.input(|input| {
+        (
+            input.time,
+            input
+                .pointer
+                .hover_pos()
+                .is_some_and(|point| bar.contains(point)),
+            input.pointer.any_pressed(),
+            input.pointer.any_down(),
+            input.key_pressed(egui::Key::Tab),
+        )
+    });
+    if pressed && hovered {
+        state.dragging = true;
+    }
+    state.dragging &= down;
+    let focused = ctx
+        .memory(|memory| memory.focused())
+        .and_then(|id| ctx.read_response(id))
+        .is_some_and(|response| bar.contains(response.rect.center()));
+    let engaged = hovered
+        || keyboard
+        || focused
+        || state.dragging
+        || app.seek_preview.is_some()
+        || app.show_devices
+        || egui::Popup::is_any_open(ctx);
+    if engaged {
+        state.until = time + REVEAL_GRACE;
+    }
+    let grace = time < state.until;
+    if grace && !engaged {
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(state.until - time));
+    }
+    let visible = controls_visible(app.settings.player_bar_auto_hide, moving, engaged, grace);
+    let was_visible = state.shown;
+    state.shown = visible;
+    ctx.data_mut(|data| data.insert_temp(id, state));
+    (visible, was_visible)
+}
+
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
+    use crate::settings::{LyricsVisualizer, PlayerBarVis};
+    let fullscreen = app.lyrics_fullscreen.is_some() && !app.immersive();
+    let strip = fullscreen
+        && app.settings.lyrics_presentation.visualizer == LyricsVisualizer::Strip
+        && app.settings.player_bar_vis != PlayerBarVis::Off
+        && app.visualizers_available();
+    let height = if fullscreen {
+        FULLSCREEN_BAR_HEIGHT
+    } else {
+        theme::PLAYER_BAR_HEIGHT
+    };
     let palette = app.palette;
     let fill = eased_fill(ui.ctx(), palette.panel, app.now_playing_tint());
     egui::Panel::bottom("player-bar")
-        .exact_size(theme::PLAYER_BAR_HEIGHT)
+        .exact_size(height + if strip { STRIP_HEIGHT } else { 0.0 })
         .resizable(false)
         .show_separator_line(false)
-        .frame(
-            Frame::new()
-                .fill(fill)
-                .inner_margin(Margin::symmetric(16, 0)),
-        )
+        .frame(Frame::new().inner_margin(Margin::ZERO))
         .show(ui, |ui| {
-            let rect = ui.max_rect();
+            let all = ui.max_rect();
+            let bar = Rect::from_min_max(pos2(all.left(), all.bottom() - height), all.max);
+            ui.painter().rect_filled(bar, 0.0, fill);
+            let rect = bar.shrink2(vec2(16.0, 0.0));
             let now = app.now_playing();
-            // The whole bar, margins included, behind everything else.
-            let behind = rect.expand2(vec2(16.0, 0.0));
-            if visualizer(app, ui, behind, now.as_ref()) {
+            let moving = app.settings.player_bar_vis != PlayerBarVis::Off
+                && app.visualizers_available()
+                && (app.visualizer_sounding(now.as_ref())
+                    || (app.settings.player_bar_vis == PlayerBarVis::Spectrum
+                        && !app.player_bar_analyser.settled()));
+            let (visible, was_visible) = reveal_controls(app, ui.ctx(), bar, moving);
+            let amount = ui.ctx().animate_bool_with_time(
+                egui::Id::new("player-bar-controls"),
+                visible,
+                crate::motion::seconds(ui.ctx(), 0.18),
+            );
+            let soft = if app.settings.player_bar_auto_hide && moving {
+                amount
+            } else {
+                0.0
+            };
+            let visualizer_rect = if strip {
+                Rect::from_min_max(all.min, pos2(all.right(), bar.top()))
+            } else {
+                bar
+            };
+            if visualizer(app, ui, visualizer_rect, now.as_ref(), soft) {
                 theme::visualiser_frame(ui.ctx(), app.visualiser_fps());
             }
-            // Its empty space is the visualizer's control, as Winamp's
-            // visualizer was: a click moves to the next mode. The controls
-            // drawn after it take their own clicks.
-            if app.settings.player_bar_vis_click && app.visualizers_available() {
+            // Revealing the controls never changes the visualizer accidentally.
+            if app.settings.player_bar_vis_click
+                && app.visualizers_available()
+                && visible
+                && (!app.settings.player_bar_auto_hide || was_visible)
+            {
+                let cycle_rect = if fullscreen {
+                    Rect::from_min_max(bar.min, pos2(bar.right(), bar.bottom() - 30.0))
+                } else {
+                    bar
+                };
                 let empty = ui.interact(
-                    behind,
+                    cycle_rect,
                     ui.id().with("player-bar-visualizer"),
                     Sense::click(),
                 );
-                // An open tooltip stays while the pointer is inside its widget's
-                // rect, and this one spans the bar: offer it only while the empty
-                // space itself is hovered, not the controls over it.
                 let empty = if empty.hovered() {
                     empty.on_hover_text_at_pointer(gettext(
                         app.locale,
@@ -89,42 +184,75 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             }
             ui.painter().hline(
                 rect.x_range(),
-                rect.top() + 0.5,
+                bar.top() + 0.5,
                 egui::Stroke::new(1.0, palette.outline),
             );
-            let width = rect.width();
-            let side = (width * 0.3).clamp(200.0, 420.0);
-            let cy = rect.center().y;
-            let left = Rect::from_min_max(rect.min, pos2(rect.left() + side, rect.bottom()));
+            // Keep widgets, IDs and AccessKit nodes present even while hidden.
+            // Pointer entry and Tab reveal them before they can be activated.
+            let mut controls =
+                ui.new_child(UiBuilder::new().id_salt("player-controls").max_rect(rect));
+            controls.multiply_opacity(amount);
+            let ui = &mut controls;
+            let row = if fullscreen {
+                Rect::from_min_max(rect.min, pos2(rect.right(), rect.bottom() - 30.0))
+            } else {
+                rect
+            };
+            let side = (row.width() * 0.3)
+                .clamp(200.0, 420.0)
+                .min(((row.width() - transport_width() - 16.0) / 2.0).max(0.0));
+            let left = Rect::from_min_max(row.min, pos2(row.left() + side, row.bottom()));
             let center = Rect::from_min_max(
-                pos2(rect.left() + side, rect.top()),
-                pos2(rect.right() - side, rect.bottom()),
+                pos2(row.left() + side, row.top()),
+                pos2(row.right() - side, row.bottom()),
             );
-
-            // egui's cross-axis centring is unreliable across nested layouts of
-            // mixed heights, so each region is placed in an explicit band that
-            // is sized to its content and centred on the bar's midline.
             now_playing_block(app, ui, left, now.as_ref());
-
-            transport(app, ui, now.as_ref(), center);
-
-            let right_band =
-                Rect::from_min_size(pos2(rect.right() - side, cy - 15.0), vec2(side, 30.0));
+            transport(app, ui, now.as_ref(), center, fullscreen.then_some(rect));
+            let right_band = Rect::from_min_size(
+                pos2(row.right() - side, row.center().y - 15.0),
+                vec2(side, 30.0),
+            );
             let mut right_ui = ui.new_child(
                 UiBuilder::new()
                     .max_rect(right_band)
                     .layout(Layout::right_to_left(Align::Center)),
             );
-            let transport_right = center.center().x + transport_width() / 2.0;
-            extras(app, &mut right_ui, now.as_ref(), transport_right);
+            extras(
+                app,
+                &mut right_ui,
+                now.as_ref(),
+                center.center().x + transport_width() / 2.0,
+            );
         });
+}
+
+/// Fixed nine-tap geometric softening. The signal is sampled once and only
+/// painting is repeated; no offscreen pass, image allocation or disk work.
+fn softened(painter: &egui::Painter, rect: Rect, soft: f32, paint: impl Fn(&egui::Painter, Rect)) {
+    if soft < 0.01 {
+        paint(painter, rect);
+        return;
+    }
+    for (y, wy) in [(-1.0, 0.25), (0.0, 0.5), (1.0, 0.25)] {
+        for (x, wx) in [(-1.0, 0.25), (0.0, 0.5), (1.0, 0.25)] {
+            let mut layer = painter.clone();
+            layer.multiply_opacity(wx * wy);
+            paint(&layer, rect.translate(vec2(x, y) * (5.0 * soft)));
+        }
+    }
 }
 
 /// Draws the chosen spectrum or waveform of the song playing on this
 /// computer across `rect`, in colours drawn from the cover. It reads the
 /// same post-equalizer, pre-volume sound as the mini player's visualizer,
 /// so the volume never moves it. Returns whether it is still moving.
-fn visualizer(app: &mut App, ui: &egui::Ui, rect: Rect, now: Option<&NowPlaying>) -> bool {
+fn visualizer(
+    app: &mut App,
+    ui: &egui::Ui,
+    rect: Rect,
+    now: Option<&NowPlaying>,
+    soft: f32,
+) -> bool {
     use crate::settings::PlayerBarVis;
     use crate::vis;
     let mode = app.settings.player_bar_vis;
@@ -152,7 +280,9 @@ fn visualizer(app: &mut App, ui: &egui::Ui, rect: Rect, now: Option<&NowPlaying>
                 .player_bar_analyser
                 .step(&samples, std::time::Instant::now());
             let peaks = app.player_bar_analyser.peaks();
-            spectrum(&painter, rect, &levels, &peaks, &colours, strength);
+            softened(&painter, rect, soft, |painter, rect| {
+                spectrum(painter, rect, &levels, &peaks, &colours, strength);
+            });
             sounding || !app.player_bar_analyser.settled()
         }
         PlayerBarVis::Waveform => {
@@ -165,13 +295,10 @@ fn visualizer(app: &mut App, ui: &egui::Ui, rect: Rect, now: Option<&NowPlaying>
                 .winamp
                 .tap
                 .window(count * vis::SCOPE_STEP, app.visualizer_lag());
-            waveform(
-                &painter,
-                rect,
-                &vis::scope_line(&samples, count),
-                &colours,
-                strength,
-            );
+            let trace = vis::scope_line(&samples, count);
+            softened(&painter, rect, soft, |painter, rect| {
+                waveform(painter, rect, &trace, &colours, strength);
+            });
             true
         }
     }
@@ -692,7 +819,13 @@ fn transport_width() -> f32 {
     TRANSPORT_WIDTHS.iter().sum::<f32>() + TRANSPORT_GAP * 4.0
 }
 
-fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region: Rect) {
+fn transport(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    now: Option<&NowPlaying>,
+    region: Rect,
+    fullscreen: Option<Rect>,
+) {
     let palette = app.palette;
     // Everything here is placed with explicit rects: egui's implicit rows
     // centre each widget in the row height known when it is added, which
@@ -856,10 +989,19 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
         app.actions.push(Action::CycleRepeat);
     }
 
-    // Progress row, just below the buttons (disc bottom + 6px gap + half of
-    // the time text's line height).
-    let row_cy = cy + 31.0;
-    let slider_width = (region.width() - 120.0).clamp(120.0, 620.0);
+    progress(app, ui, now, region, cy + 31.0, fullscreen);
+}
+
+fn progress(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    now: Option<&NowPlaying>,
+    region: Rect,
+    row_cy: f32,
+    fullscreen: Option<Rect>,
+) {
+    let palette = app.palette;
+    let row_cy = fullscreen.map_or(row_cy, |rect| rect.bottom() - 15.0);
     let (position, duration) = now
         .map(|now| (now.position_ms, now.duration_ms))
         .unwrap_or((0, 0));
@@ -872,7 +1014,28 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
     } else {
         palette.dim
     };
-    let slider_left = region.center().x - slider_width / 2.0;
+    let font = theme::regular(11.5);
+    let (left, right) = (
+        util::format_duration_ms(shown_position),
+        util::format_duration_ms(duration),
+    );
+    let measure = |text: &str| {
+        ui.painter()
+            .layout_no_wrap(text.to_owned(), font.clone(), time_color)
+            .size()
+            .x
+    };
+    let (slider_left, slider_width) = if let Some(rect) = fullscreen {
+        let left_width = measure(&left) + 12.0;
+        let right_width = measure(&right) + 12.0;
+        (
+            rect.left() + left_width,
+            (rect.width() - left_width - right_width).max(1.0),
+        )
+    } else {
+        let width = (region.width() - 120.0).clamp(120.0, 620.0);
+        (region.center().x - width / 2.0, width)
+    };
     ui.painter().text(
         pos2(slider_left - 8.0, row_cy),
         egui::Align2::RIGHT_CENTER,
@@ -880,8 +1043,10 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
         theme::regular(11.5),
         time_color,
     );
-    let slider_rect =
-        Rect::from_center_size(pos2(region.center().x, row_cy), vec2(slider_width, 16.0));
+    let slider_rect = Rect::from_center_size(
+        pos2(slider_left + slider_width / 2.0, row_cy),
+        vec2(slider_width, 24.0),
+    );
     let mut slider_ui = ui.new_child(
         UiBuilder::new()
             .max_rect(slider_rect)

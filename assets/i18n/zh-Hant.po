@@ -4583,3 +4583,68 @@ msgstr "待播清單中沒有其他內容。"
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "減少歌詞動畫"
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "游標暫留時顯示播放控制項"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"視覺化動畫播放時隱藏控制項。將游標移至播放列或按 Tab，即可顯示控制項並模糊畫"
+"面。"
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "前面的歌詞行數"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr "全螢幕時在目前行之前顯示的行數。捲動可閱讀完整歌詞。"
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "後面的歌詞行數"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "全螢幕時在目前行之後顯示的行數。"
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "全螢幕背景"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr "動態封面或模糊的藝人照片。沒有照片時使用封面。"
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "全螢幕視覺化"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr "將視覺化效果顯示在播放控制項後方，或在控制項上方的精簡橫列中。"
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "動態封面"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "藝人照片"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "在播放列內"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "上方的精簡橫列"

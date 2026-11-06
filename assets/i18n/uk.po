@@ -4803,3 +4803,74 @@ msgstr "Більше в черзі нічого немає."
 
 #~ msgid "Spotify does not let apps remove one queued song."
 #~ msgstr "Spotify не дозволяє застосункам видаляти з черги окрему пісню."
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "Показувати керування при наведенні"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"Приховувати керування, доки візуалізація рухається. Наведіть вказівник або "
+"натисніть Tab, щоб показати керування та розмити зображення."
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "Попередні рядки тексту"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr ""
+"Рядки перед поточним рядком на повному екрані. Прокрутіть, щоб прочитати "
+"весь текст."
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "Наступні рядки тексту"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "Рядки після поточного рядка на повному екрані."
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "Тло повного екрана"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"Анімована обкладинка або розмите фото виконавця. Якщо фото немає, "
+"використовується обкладинка."
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "Візуалізація на повному екрані"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr ""
+"Показувати візуалізацію за елементами керування або в компактній смузі над "
+"ними."
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "Анімована обкладинка"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "Фото виконавця"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "На панелі відтворення"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "Компактна смуга зверху"

@@ -4832,3 +4832,74 @@ msgstr "Rien d’autre dans la file."
 
 #~ msgid "Reduce lyrics motion"
 #~ msgstr "Réduire les animations des paroles"
+
+#: src/ui/settings.rs:1375 src/ui/settings.rs:1629
+msgid "Reveal player controls on hover"
+msgstr "Afficher les commandes au survol"
+
+#: src/ui/settings.rs:1376
+msgid ""
+"Hide controls while the visualizer moves. Hover or press Tab to reveal them "
+"and soften the picture."
+msgstr ""
+"Masque les commandes pendant que la visualisation bouge. Survolez la barre "
+"ou appuyez sur Tab pour les afficher et flouter l’image."
+
+#: src/ui/settings.rs:1377 src/ui/settings.rs:1653
+msgid "Previous lyrics lines"
+msgstr "Lignes de paroles précédentes"
+
+#: src/ui/settings.rs:1378
+msgid ""
+"Lines before the current line in full screen. Scroll to read the complete "
+"lyrics."
+msgstr ""
+"Lignes avant la ligne actuelle en plein écran. Faites défiler pour lire "
+"toutes les paroles."
+
+#: src/ui/settings.rs:1379 src/ui/settings.rs:1655
+msgid "Next lyrics lines"
+msgstr "Lignes de paroles suivantes"
+
+#: src/ui/settings.rs:1380
+msgid "Lines after the current line in full screen."
+msgstr "Lignes après la ligne actuelle en plein écran."
+
+#: src/ui/settings.rs:1381
+msgid "Full screen background"
+msgstr "Arrière-plan du plein écran"
+
+#: src/ui/settings.rs:1382
+msgid ""
+"Animated cover art or a blurred artist photo. Missing photos use the cover."
+msgstr ""
+"Pochette animée ou photo floutée de l’artiste. La pochette est utilisée si "
+"aucune photo n’est disponible."
+
+#: src/ui/settings.rs:1383
+msgid "Full screen visualizer"
+msgstr "Visualisation en plein écran"
+
+#: src/ui/settings.rs:1384
+msgid ""
+"Keep the visualizer behind the player controls or in a compact strip above "
+"them."
+msgstr ""
+"Affiche la visualisation derrière les commandes de lecture ou dans une bande "
+"compacte au-dessus."
+
+#: src/ui/settings.rs:1685 src/ui/settings.rs:1694
+msgid "Animated cover art"
+msgstr "Pochette animée"
+
+#: src/ui/settings.rs:1686 src/ui/settings.rs:1696
+msgid "Artist photo"
+msgstr "Photo de l’artiste"
+
+#: src/ui/settings.rs:1719 src/ui/settings.rs:1728
+msgid "Inside the player bar"
+msgstr "Dans la barre de lecture"
+
+#: src/ui/settings.rs:1720 src/ui/settings.rs:1732
+msgid "Compact strip above"
+msgstr "Bande compacte au-dessus"

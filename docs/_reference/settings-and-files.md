@@ -388,6 +388,8 @@ main fields are:
 | `accent_from_art` | `true` | Tint pages with album art, and colour the player bar visualizer with the cover's colours |
 | `player_bar_vis` | `off` | Since 0.11.0: what moves behind the player bar while a song plays on this computer: `off`, `spectrum` or `waveform` |
 | `player_bar_vis_click` | `true` | Allow clicks on empty player bar space to cycle visualizer modes |
+| `player_bar_auto_hide` | `false` | Hide controls and metadata while a visualizer is moving; hover, Tab, focused controls, dragging and menus reveal them with a softened visualizer |
+| `lyrics_presentation` | `{"previous":1,"next":2,"background":"artwork","visualizer":"integrated"}` | Full-screen timed context: `previous` 0–3, `next` 0–5; `background` is animated `artwork` or a blurred `artist` portrait; `visualizer` is `integrated` in the bar or a compact `strip` above it. Unknown choices and malformed individual values use defaults without resetting unrelated settings |
 | `visualizer_fps` | `60` | Frame rate of the player bar and mini player visualizers; `0` is uncapped. Half that out of focus, at most 30 while the system saves energy, none while the window is hidden. MilkDrop uses `milkdrop_fps` |
 | `library_sort` | `{}` | Per-section Library order overrides, since 0.8.0: `library`, `recently_played`, `name`, `recently_added`, `local`, or `spotify`, where supported |
 | `library_by_you` | `false` | Show only playlists owned by the signed-in account, alongside Liked Songs; applies only to the Playlists shelf |
@@ -479,7 +481,8 @@ and `--demo-show` adds surfaces on top of it: a comma separated list of
 `collection-loading`, `shuffle-selected`, `shuffle-started`, `library-list`,
 `library-list-narrow`, `library-list-wide`, `library-grid`, `library-grid-narrow`,
 `library-grid-wide`, `eq-user-presets`, `start-in-tray`, `rtl`, `player-bar-spectrum`, `player-bar-waveform`,
-`lyrics-fullscreen-view`, `lyrics-fullscreen-instrumental`, `signed-out`, `connecting`,
+`lyrics-fullscreen-view`, `lyrics-fullscreen-instrumental`, `lyrics-strip`,
+`lyrics-artist-photo`, `player-controls-auto-hide`, `signed-out`, `connecting`,
 `waiting-for-browser`, `sign-in-returning`, `sign-in-malformed`, `sign-in-shared-retired`,
 `sign-in-unknown-client`, `sign-in-not-allowed`, `shared-grant`, `own-app`, `panels-left`, `now-playing`, and `no-podcasts`. The Library variants show the list or cover grid with
 a normal, narrow, or wide sidebar and collapsed artwork for matching captures.

@@ -541,6 +541,15 @@ tray, with the display off or the screen locked. MilkDrop has its own frame
 rate. Disable **Click player bar to change
 visualizer** in **Settings > Appearance** to prevent accidental changes.
 
+The wide spectrum's bars fall over roughly 900 milliseconds from full height,
+with the existing peak hold. The classic mini player's analyser is unchanged.
+Enable **Reveal player controls on hover** in **Settings > Appearance** to
+hide the metadata and controls while the visualizer is moving. Hover over
+the player bar, use Tab, or focus a control to reveal them and soften the
+picture. Controls stay visible during a drag or an open menu, and return when
+the visualizer is off, unavailable or at rest. The first pointer entry reveals
+the bar before empty-space clicks can change its visualizer.
+
 Spotifast follows the system when it asks for less motion: **Animation
 effects** turned off in Windows, **Reduce motion** on macOS, or GNOME's
 **Animations** turned off. Its animations then show where they end at once:
@@ -878,6 +887,30 @@ hand pauses following; choose **Follow** to resume. Since 0.11.0, a wide
 window shows the song's cover beside the lyrics, the two centred together,
 and a song without words, such as an instrumental, shows just its cover in
 the middle of the screen.
+
+In **Settings > Appearance**, **Previous lyrics lines** and **Next lyrics
+lines** set the timed context: one previous line, the current line and two
+next lines by default. These are the timed entries the source provides,
+including instrumental breaks. Scrolling manually opens the complete text;
+**Follow** returns to the current context. The lyrics side panel and untimed
+lyrics retain their full text. Long lines wrap and can still be scrolled in
+short windows.
+
+**Full screen background** chooses slowly moving blurred cover art or a blurred
+photo of the first artist. A missing or failed photo uses the cover. Episodes
+and local files without an identified Spotify artist use their cover too.
+The cover holds still in pause or when the system asks for reduced motion.
+Artist photos reuse the existing artist overview and artwork cache; they do
+not add a new service or request whether you follow an artist.
+
+The full-screen player has its seek bar across the window, with controls in a
+separate row above it. **Full screen visualizer** places the selected spectrum
+or waveform either **Inside the player bar** or in a **Compact strip above**.
+The strip reserves its own space, leaving lyrics and seeking unobstructed. An open
+queue keeps its column in wide full-screen windows even when the height is
+limited. The queue uses light text on the full-screen background in either app
+theme.
+The dedicated immersive MilkDrop view keeps its existing player layout.
 
 Press **V** in full screen lyrics, or click anywhere that isn't a line of
 lyrics or a control, to put MilkDrop behind the words instead of the cover's

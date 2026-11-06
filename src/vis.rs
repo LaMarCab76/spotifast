@@ -594,9 +594,9 @@ pub const WIDE_SAMPLES: usize = FFT_SAMPLES;
 /// The player bar's bands: every one of Winamp's semitone columns as a bar
 /// of its own, where the skin groups them four to a bar.
 pub const WIDE_BANDS: usize = COLUMNS;
-/// How fast a bar falls, in heights per second: Winamp's twelve
-/// sixteenths of a row each sixtieth of a second, over fifteen rows.
-const WIDE_FALL: f32 = FALLOFF / MAX_HEIGHT / 0.016_667;
+/// Only the wide spectrum uses this slower release: a full-height band
+/// falls in 900 ms. The classic skin retains its own falloff above.
+const WIDE_FALL: f32 = 1.0 / 0.9;
 /// How long a peak cap hangs above its band before it drops, and how fast
 /// it then falls, in heights per second squared.
 const PEAK_HOLD: f32 = 0.35;
@@ -637,7 +637,7 @@ impl Default for WideAnalyser {
 impl WideAnalyser {
     /// Moves the bars towards the spectrum of `samples` (mono, -1 to 1,
     /// `WIDE_SAMPLES` of them): up at once, as Winamp's, and down at its
-    /// rate for the time since the last step.
+    /// slower release rate for the time since the last step.
     pub fn step(&mut self, samples: &[f32], now: Instant) -> [f32; WIDE_BANDS] {
         let elapsed = self
             .last
@@ -1028,7 +1028,7 @@ mod tests {
         assert!(analyser.settled());
     }
 
-    /// The bars fall at Winamp's rate by the clock, not by how often they
+    /// The bars fall at the slower release rate by the clock, not by how often they
     /// are drawn.
     #[test]
     fn the_wide_analyser_falls_the_same_at_any_frame_rate() {
@@ -1049,8 +1049,16 @@ mod tests {
         for (slow, fast) in slow.iter().zip(fast) {
             assert!((slow - fast).abs() < 0.01, "{slow} against {fast}");
         }
-        // Winamp's bars cross the whole height in a third of a second.
-        assert!(slow.iter().all(|level| *level < 0.7));
+        let loudest = slow.iter().copied().fold(0.0, f32::max);
+        assert!((loudest - (1.0 - 0.12 / 0.9)).abs() < 0.02);
+        for step_ms in [10, 30, 50, 100] {
+            let half = run(Duration::from_millis(step_ms), (450 / step_ms) as u32);
+            let elapsed = (450 / step_ms * step_ms) as f32 / 1000.0;
+            let expected = 1.0 - elapsed / 0.9;
+            assert!((half.iter().copied().fold(0.0, f32::max) - expected).abs() < 0.02);
+            let end = run(Duration::from_millis(step_ms), (900 / step_ms) as u32);
+            assert!(end.iter().all(|level| *level == 0.0));
+        }
     }
     #[test]
     fn full_scale_follows_the_volume_still_to_come() {

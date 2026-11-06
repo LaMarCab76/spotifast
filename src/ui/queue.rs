@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use egui::{Align, Frame, Layout, Margin, Rect, UiBuilder};
+use egui::{Align, Layout, Rect, UiBuilder};
 
 use crate::api::models::PlayableItem;
 use crate::app::App;
@@ -34,115 +34,66 @@ pub fn page(app: &mut App, ui: &mut egui::Ui) {
     contents(app, ui, false, palette);
 }
 
-pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
+pub(crate) fn section(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    let fit = super::yielding_panel(
-        ui.ctx(),
-        "queue-panel",
-        theme::SIDE_PANEL_MIN_WIDTH..=560.0,
-        app.settings.queue_width,
-        ui.available_width() - super::topbar::least_width(ui.ctx()),
+    // Measure buttons first and give the remaining width to the chips.
+    // Without `shrink_left`, wrapped chips can overlap the close button.
+    let tab = app.queue_tab;
+    let offer_save = tab == QueueTab::Queue && !app.queue_playlist_uris().is_empty();
+    let mut picked = None;
+    let mut save = false;
+    egui::Sides::new().shrink_left().show(
+        ui,
+        |ui| {
+            ui.add_space(4.0);
+            picked = widgets::chips(
+                ui,
+                &palette,
+                &[
+                    (QueueTab::Queue, &gettext(app.locale, "Queue")),
+                    (QueueTab::Recents, &gettext(app.locale, "Recent")),
+                ],
+                tab,
+            );
+        },
+        |ui| {
+            save = save_button(ui, &palette, offer_save, app.locale);
+        },
     );
-    let panel = super::docked_panel("queue-panel", super::panels_on_left(app))
-        .resizable(true)
-        .default_size(app.settings.queue_width)
-        .size_range(fit.range.clone())
-        .show_separator_line(false)
-        .frame(
-            Frame::new()
-                .fill(palette.panel)
-                .inner_margin(Margin::symmetric(12, 12)),
-        );
-    let response = panel.show(ui, |ui| {
-        let window_controls =
-            super::window_controls_reservation(ui.ctx(), app, ui.available_width());
-        ui.add_space(
-            window_controls.queue_top
-                + super::left_corner_inset(ui.ctx(), app, super::Header::Queue),
-        );
-        // Measure buttons first and give the remaining width to the chips.
-        // Without `shrink_left`, wrapped chips can overlap the close button.
-        let tab = app.queue_tab;
-        let offer_save = tab == QueueTab::Queue && !app.queue_playlist_uris().is_empty();
-        let mut picked = None;
-        let mut close = false;
-        let mut save = false;
-        egui::Sides::new().shrink_left().show(
-            ui,
-            |ui| {
-                ui.add_space(4.0);
-                picked = widgets::chips(
-                    ui,
-                    &palette,
-                    &[
-                        (QueueTab::Queue, &gettext(app.locale, "Queue")),
-                        (QueueTab::Recents, &gettext(app.locale, "Recent")),
-                    ],
-                    tab,
-                );
-            },
-            |ui| {
-                close = theme::icon_button(
-                    ui,
-                    Icon::X,
-                    18.0,
-                    palette.secondary,
-                    palette.text,
-                    &gettext(app.locale, "Close"),
-                )
-                .clicked();
-                save = save_button(ui, &palette, offer_save, app.locale);
-            },
-        );
-        if let Some(tab) = picked {
-            app.actions.push(Action::SetQueueTab(tab));
-        }
-        if close {
-            app.actions.push(Action::ToggleQueuePanel);
-        }
-        if save {
-            app.actions.push(Action::SaveQueueAsPlaylist);
-        }
-        ui.add_space(8.0);
-        // Lazy load recents when tab becomes visible.
-        if app.queue_tab == QueueTab::Recents
-            && !app.recents.loading
-            && !app.recents.complete
-            && app.recents.items.is_empty()
-            && app.recents.error.is_none()
-        {
-            app.actions.push(Action::LoadMoreRecents);
-        }
-        crate::autoscroll::show(
-            ui,
-            egui::ScrollArea::vertical()
-                .id_salt("queue-panel-scroll")
-                .auto_shrink([false, false])
-                // Keep rows and headings clear of the scroll bar.
-                .content_margin(egui::Margin {
-                    left: 0,
-                    right: 12,
-                    top: 0,
-                    bottom: 0,
-                }),
-            egui::Vec2b::new(false, true),
-            |ui| match app.queue_tab {
-                QueueTab::Queue => contents(app, ui, true, palette),
-                QueueTab::Recents => recents_contents(app, ui, palette),
-            },
-        );
-    });
-    let width = response.response.rect.width();
-    // Adopt the drawn width only from the person's own drag. The panel
-    // also draws clamped copies of widths chosen elsewhere (the
-    // fullscreen column shares this setting below the panel minimum),
-    // and those must never overwrite the remembered width.
-    if (width - app.settings.queue_width).abs() > 1.0
-        && super::panel_dragged(ui.ctx(), "queue-panel")
-    {
-        app.settings.queue_width = width;
-        app.actions.push(Action::SettingsChanged);
+    if let Some(tab) = picked {
+        app.actions.push(Action::SetQueueTab(tab));
     }
+    if save {
+        app.actions.push(Action::SaveQueueAsPlaylist);
+    }
+    ui.add_space(8.0);
+    // Lazy load recents when tab becomes visible.
+    if app.queue_tab == QueueTab::Recents
+        && !app.recents.loading
+        && !app.recents.complete
+        && app.recents.items.is_empty()
+        && app.recents.error.is_none()
+    {
+        app.actions.push(Action::LoadMoreRecents);
+    }
+    crate::autoscroll::show(
+        ui,
+        egui::ScrollArea::vertical()
+            .id_salt("queue-panel-scroll")
+            .auto_shrink([false, false])
+            // Keep rows and headings clear of the scroll bar.
+            .content_margin(egui::Margin {
+                left: 0,
+                right: 12,
+                top: 0,
+                bottom: 0,
+            }),
+        egui::Vec2b::new(false, true),
+        |ui| match app.queue_tab {
+            QueueTab::Queue => contents(app, ui, true, palette),
+            QueueTab::Recents => recents_contents(app, ui, palette),
+        },
+    );
 }
 
 /// Fullscreen queue column width bounds, shared with the lyrics layout

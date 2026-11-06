@@ -2386,8 +2386,8 @@ mod tests {
                     );
                 }
                 let seek = ctx
-                    .read_response(egui::Id::new("seek-slider"))
-                    .expect("seek keeps its ID");
+                    .read_response(egui::Id::new(("fullscreen-player", "seek-slider")))
+                    .expect("fullscreen seek has its own stable ID");
                 assert!(
                     seek.rect.width() > width - 160.0,
                     "{width} {mode:?}: {:?}",
@@ -3333,7 +3333,7 @@ mod tests {
             );
             assert_eq!(app.queue_tab, QueueTab::Recents);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
-            let close = accessible_node(&tree, &gettext(locale, "Close"), Role::Button);
+            let close = accessible_node(&tree, &gettext(locale, "Collapse player"), Role::Button);
             accessible_frame(
                 &ctx,
                 &mut app,
@@ -3413,7 +3413,7 @@ mod tests {
             }
             app.lyrics_fullscreen = None;
             let tree = accessible_frame(&ctx, &mut app, vec![]);
-            let close = accessible_node(&tree, &gettext(locale, "Close"), Role::Button);
+            let close = accessible_node(&tree, &gettext(locale, "Collapse player"), Role::Button);
             accessible_frame(
                 &ctx,
                 &mut app,
@@ -3527,8 +3527,8 @@ mod tests {
             ] {
                 app.recents.loading = loading;
                 app.recents.error = error;
-                view_frame(&ctx, &mut app, vec![], crate::ui::queue::side_panel);
-                let painted = view_frame(&ctx, &mut app, vec![], crate::ui::queue::side_panel);
+                view_frame(&ctx, &mut app, vec![], crate::ui::queue::section);
+                let painted = view_frame(&ctx, &mut app, vec![], crate::ui::queue::section);
                 for source in sources {
                     assert!(
                         painted
@@ -3548,7 +3548,7 @@ mod tests {
                         &ctx,
                         &mut app,
                         pointer_click(retry, egui::PointerButton::Primary),
-                        crate::ui::queue::side_panel,
+                        crate::ui::queue::section,
                     );
                     assert!(
                         app.actions
@@ -3771,7 +3771,9 @@ mod tests {
                     events,
                     ..Default::default()
                 },
-                |ui| crate::ui::now_playing::side_panel(app, ui),
+                |ui| {
+                    crate::ui::player_panel::show(app, ui);
+                },
             );
             output.textures_delta.clear();
             output
@@ -3825,7 +3827,9 @@ mod tests {
             _ => None,
         }
         .expect("the demo queues songs");
-        let view = crate::ui::now_playing::side_panel;
+        let view = |app: &mut App, ui: &mut egui::Ui| {
+            crate::ui::player_panel::show(app, ui);
+        };
         view_frame(&ctx, &mut app, vec![], view);
         let texts = view_frame(&ctx, &mut app, vec![], view);
         let has = |text: &str| texts.iter().any(|(label, _)| label.contains(text));
@@ -6010,7 +6014,20 @@ mod tests {
         assert!(!app.settings.lyrics_milkdrop);
         run(&ctx, &mut app, Vec::new());
         run(&ctx, &mut app, Vec::new());
-        let button = egui::pos2(1280.0 - 16.0 - 15.0, 800.0 - 45.0);
+        let tree = accessible_frame(&ctx, &mut app, vec![]);
+        let bounds = tree
+            .nodes
+            .iter()
+            .find_map(|(_, node)| {
+                (node.label() == Some("Full screen lyrics"))
+                    .then(|| node.bounds())
+                    .flatten()
+            })
+            .expect("the returning section's expand button");
+        let button = egui::pos2(
+            ((bounds.x0 + bounds.x1) / 2.0) as f32,
+            ((bounds.y0 + bounds.y1) / 2.0) as f32,
+        );
         run(&ctx, &mut app, vec![egui::Event::PointerMoved(button)]);
         run(&ctx, &mut app, pointer_click(button, Primary));
         assert!(app.lyrics_fullscreen.is_some(), "and enters");
@@ -8509,6 +8526,40 @@ mod tests {
         app.backend.shutdown();
     }
 
+    fn player_song_drag_start(ctx: &egui::Context, app: &mut App) -> egui::Pos2 {
+        if app.player_panel_tab().is_none() {
+            return ctx
+                .read_response(egui::Id::new("now-playing-cover"))
+                .unwrap()
+                .rect
+                .center();
+        }
+        let title = app
+            .queue
+            .get()
+            .and_then(|q| q.currently_playing.as_ref())
+            .map(|item| item.name().to_string())
+            .unwrap_or_else(|| app.now_playing().unwrap().title);
+        let tree = accessible_frame(ctx, app, vec![]);
+        let panel = egui::containers::panel::PanelState::load(
+            ctx,
+            egui::Id::new(crate::ui::player_panel::PANEL_ID),
+        )
+        .unwrap()
+        .outer_rect;
+        tree.nodes
+            .iter()
+            .filter(|(_, node)| {
+                node.label().is_some_and(|label| {
+                    label == title || label.starts_with(&format!("Play {title},"))
+                })
+            })
+            .filter_map(|(_, node)| node.bounds())
+            .map(|b| egui::pos2(((b.x0 + b.x1) / 2.0) as f32, ((b.y0 + b.y1) / 2.0) as f32))
+            .find(|point| panel.contains(*point))
+            .expect("the playing song in the visible panel")
+    }
+
     fn frame_events(ctx: &egui::Context, app: &mut App, events: Vec<egui::Event>) {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -9342,7 +9393,7 @@ mod tests {
             if queue {
                 assert_same_row(&placed, "Queue", "Recent");
             }
-            if lyrics {
+            if lyrics && !queue {
                 assert_same_row(&placed, "Lyrics", "Follow");
             }
         }
@@ -9777,8 +9828,8 @@ mod tests {
             Loadable::Loaded(Vec::new()),
         ] {
             app.friends = results;
-            view_frame(&ctx, &mut app, vec![], crate::ui::friends::side_panel);
-            let text = view_frame(&ctx, &mut app, vec![], crate::ui::friends::side_panel);
+            view_frame(&ctx, &mut app, vec![], crate::ui::friends::section);
+            let text = view_frame(&ctx, &mut app, vec![], crate::ui::friends::section);
             assert!(text.iter().any(|(s, _)| s == "Authorize"), "{text:?}");
             assert!(
                 text.iter()
@@ -11171,7 +11222,7 @@ mod tests {
             frame(&ctx, &mut app);
         }
 
-        let start = egui::pos2(40.0, 755.0);
+        let start = player_song_drag_start(&ctx, &mut app);
         frame_events(
             &ctx,
             &mut app,
@@ -11245,7 +11296,7 @@ mod tests {
 
         // Drag the now-playing song from the bottom-left player, same
         // starting point as the equivalent playlist-insert test.
-        let start = egui::pos2(40.0, 755.0);
+        let start = player_song_drag_start(&ctx, &mut app);
         frame_events(
             &ctx,
             &mut app,
@@ -11315,7 +11366,7 @@ mod tests {
         // close/save buttons and tab chips.
         let end = egui::pos2(1100.0, 300.0);
 
-        let start = egui::pos2(40.0, 755.0);
+        let start = player_song_drag_start(&ctx, &mut app);
         frame_events(
             &ctx,
             &mut app,
@@ -11829,7 +11880,14 @@ mod tests {
             &mut app,
             vec![egui::Event::PointerMoved(egui::pos2(
                 start.x,
-                800.0 - crate::theme::PLAYER_BAR_HEIGHT - 14.0,
+                egui::containers::panel::PanelState::load(
+                    &ctx,
+                    egui::Id::new("side-player-controls"),
+                )
+                .unwrap()
+                .outer_rect
+                .top()
+                    - 14.0,
             ))],
         );
         for _ in 0..400 {
@@ -11923,23 +11981,20 @@ mod tests {
             .expect("the Next up heading")
             .0;
         let heading = bounds_of(heading);
-        // The player bar's Queue button, not the queue panel's Queue tab.
+        // The Queue icon in the common header, above the content's Queue chip.
         let button = tree
             .nodes
             .iter()
             .find(|(_, node)| {
-                node.role() == Role::Button
-                    && node.label() == Some("Queue")
-                    && node.bounds().is_some_and(|bounds| {
-                        bounds.y0 >= f64::from(800.0 - crate::theme::PLAYER_BAR_HEIGHT)
-                    })
+                node.label() == Some("Queue")
+                    && node.bounds().is_some_and(|bounds| bounds.y1 <= 50.0)
             })
-            .expect("the player bar's Queue button")
+            .expect("the player panel's Queue tab")
             .0;
         let button = bounds_of(button);
 
         let drag_to = |app: &mut App, end: egui::Pos2| {
-            let start = egui::pos2(40.0, 755.0);
+            let start = player_song_drag_start(&ctx, app);
             frame_events(
                 &ctx,
                 app,
@@ -12030,7 +12085,7 @@ mod tests {
         let target_row = row_rect("Queued 1");
         let end = egui::pos2(target_row.left() + 130.0, target_row.top() + 1.0);
 
-        let start = egui::pos2(40.0, 755.0);
+        let start = player_song_drag_start(&ctx, &mut app);
         frame_events(
             &ctx,
             &mut app,
@@ -12108,7 +12163,7 @@ mod tests {
         // still appends at the end, ignoring the row it landed on.
         let end = egui::pos2(bounds.x0 as f32 + 130.0, bounds.y0 as f32 + 2.0);
 
-        let start = egui::pos2(40.0, 755.0);
+        let start = player_song_drag_start(&ctx, &mut app);
         frame_events(
             &ctx,
             &mut app,
@@ -13804,13 +13859,13 @@ mod tests {
             app.show_friends_panel = panel == "friends";
             app.settings.panel_side = crate::settings::PanelSide::Right;
             frame(&mut app);
-            let id = format!("{panel}-panel");
+            let id = crate::ui::player_panel::PANEL_ID;
             let load = |id: &str| {
                 egui::containers::panel::PanelState::load(&ctx, egui::Id::new(id))
                     .unwrap()
                     .outer_rect
             };
-            let (library, side) = (load("sidebar"), load(&id));
+            let (library, side) = (load("sidebar"), load(id));
             assert_eq!(
                 library.left(),
                 0.0,
@@ -13821,7 +13876,7 @@ mod tests {
 
             app.settings.panel_side = crate::settings::PanelSide::Left;
             frame(&mut app);
-            let (library, side) = (load("sidebar"), load(&id));
+            let (library, side) = (load("sidebar"), load(id));
             assert_eq!(side.left(), 0.0, "{panel} moves to the left");
             assert_eq!(library.right(), width, "{panel}: the library moves right");
             assert_eq!(side.width(), chosen, "{panel} keeps its width");
@@ -13862,12 +13917,15 @@ mod tests {
                             .expect("the panel was drawn")
                             .outer_rect
                     };
-                    let side = rect(&format!("{panel}-panel"));
+                    let side = rect(crate::ui::player_panel::PANEL_ID);
                     let library = rect("sidebar");
-                    let player = rect("player-bar");
                     assert_eq!(side.top(), library.top(), "{panel} at {width} in {theme}");
                     assert_eq!(side.top(), 0.0, "{panel} must start at the window top");
-                    assert_eq!(side.bottom(), player.top());
+                    assert_eq!(
+                        side.bottom(),
+                        800.0,
+                        "the side player owns the full window height"
+                    );
                     let search = ctx.read_response(egui::Id::new("global-search")).unwrap();
                     assert!(side.top() < search.rect.top());
                 }
@@ -14303,5 +14361,462 @@ mod tests {
             "the selected category replaces the placeholders"
         );
         app.backend.shutdown();
+    }
+    #[cfg(feature = "demo")]
+    mod side_player_tests {
+        use super::*;
+        use crate::model::PlayerPanelTab;
+
+        fn draw(
+            ctx: &egui::Context,
+            app: &mut App,
+            size: egui::Vec2,
+            events: Vec<egui::Event>,
+        ) -> egui::FullOutput {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                    events,
+                    ..Default::default()
+                },
+                |ui| app.frame_ui(ui),
+            );
+            output.textures_delta.clear();
+            output
+        }
+
+        fn bounds(tree: &egui::accesskit::TreeUpdate, label: &str) -> egui::Rect {
+            let node = tree
+                .nodes
+                .iter()
+                .find(|(_, node)| node.label() == Some(label))
+                .unwrap_or_else(|| panic!("missing {label}"));
+            let b = node.1.bounds().expect("bounds");
+            egui::Rect::from_min_max(
+                egui::pos2(b.x0 as f32, b.y0 as f32),
+                egui::pos2(b.x1 as f32, b.y1 as f32),
+            )
+        }
+
+        #[test]
+        fn side_player_controls_fit_the_minimum_in_every_section_and_orientation() {
+            for light in [false, true] {
+                let (ctx, mut app) = accessible_app(&format!("side-player-fit-{light}"));
+                if light {
+                    apply_flags(&mut app, None, Some("light"));
+                }
+                app.settings.queue_width = 280.0;
+                for left in [false, true] {
+                    app.settings.panel_side = if left {
+                        crate::settings::PanelSide::Left
+                    } else {
+                        crate::settings::PanelSide::Right
+                    };
+                    for size in [egui::vec2(760.0, 520.0), egui::vec2(1240.0, 800.0)] {
+                        let mut previous = None;
+                        for tab in [
+                            PlayerPanelTab::NowPlaying,
+                            PlayerPanelTab::Queue,
+                            PlayerPanelTab::Lyrics,
+                            PlayerPanelTab::Friends,
+                        ] {
+                            app.apply(Action::SelectPlayerPanelTab(tab), &ctx);
+                            draw(&ctx, &mut app, size, vec![]);
+                            let output = draw(&ctx, &mut app, size, vec![]);
+                            let tree = output.platform_output.accesskit_update.unwrap();
+                            let panel = egui::containers::panel::PanelState::load(
+                                &ctx,
+                                egui::Id::new(crate::ui::player_panel::PANEL_ID),
+                            )
+                            .unwrap()
+                            .outer_rect;
+                            let seek = bounds(&tree, "Playback position (%)");
+                            let volume = bounds(&tree, "Volume (%)");
+                            if let Some((old_seek, old_volume)) = previous {
+                                assert_eq!(seek, old_seek, "seek stays fixed across sections");
+                                assert_eq!(
+                                    volume, old_volume,
+                                    "volume stays fixed across sections"
+                                );
+                            }
+                            previous = Some((seek, volume));
+                            for label in [
+                                "Playback position (%)",
+                                "Volume (%)",
+                                "Shuffle",
+                                "Previous",
+                                "Pause",
+                                "Next",
+                                "Repeat",
+                                "Connect to a device",
+                                "Collapse player",
+                                "Full screen lyrics",
+                            ] {
+                                let rect = bounds(&tree, label);
+                                assert!(
+                                    panel.contains_rect(rect),
+                                    "{label} outside {panel:?}: {rect:?}, {tab:?}, {size:?}"
+                                );
+                                assert_eq!(
+                                    tree.nodes
+                                        .iter()
+                                        .filter(|(_, n)| n.label() == Some(label))
+                                        .count(),
+                                    1,
+                                    "one {label} per frame"
+                                );
+                            }
+                            assert!(bounds(&tree, "Next").right() < bounds(&tree, "Repeat").left());
+                            assert!(seek.bottom() < volume.top());
+                        }
+                    }
+                }
+                app.backend.shutdown();
+            }
+        }
+
+        #[test]
+        fn side_player_collapses_reopens_and_uses_the_current_device_anchor() {
+            let (ctx, mut app) = accessible_app("side-player-collapse");
+            let size = egui::vec2(760.0, 520.0);
+            app.apply(
+                Action::SelectPlayerPanelTab(PlayerPanelTab::NowPlaying),
+                &ctx,
+            );
+            draw(&ctx, &mut app, size, vec![]);
+            let tree = draw(&ctx, &mut app, size, vec![])
+                .platform_output
+                .accesskit_update
+                .unwrap();
+            let collapse = bounds(&tree, "Collapse player").center();
+            draw(
+                &ctx,
+                &mut app,
+                size,
+                pointer_click(collapse, egui::PointerButton::Primary),
+            );
+            assert!(app.player_panel_tab().is_none());
+            let tree = draw(&ctx, &mut app, size, vec![])
+                .platform_output
+                .accesskit_update
+                .unwrap();
+            assert!(
+                !tree
+                    .nodes
+                    .iter()
+                    .any(|(_, n)| n.label() == Some("Collapse player"))
+            );
+            let open = bounds(&tree, "Now playing").center();
+            draw(
+                &ctx,
+                &mut app,
+                size,
+                pointer_click(open, egui::PointerButton::Primary),
+            );
+            assert_eq!(app.player_panel_tab(), Some(PlayerPanelTab::NowPlaying));
+            for left in [false, true] {
+                app.settings.panel_side = if left {
+                    crate::settings::PanelSide::Left
+                } else {
+                    crate::settings::PanelSide::Right
+                };
+                let tree = draw(&ctx, &mut app, size, vec![])
+                    .platform_output
+                    .accesskit_update
+                    .unwrap();
+                let anchor = ctx
+                    .data(|d| {
+                        d.get_temp::<egui::Rect>(egui::Id::new(crate::ui::devices::BUTTON_RECT_ID))
+                    })
+                    .unwrap();
+                assert_eq!(anchor, bounds(&tree, "Connect to a device"));
+            }
+            app.backend.shutdown();
+        }
+
+        #[test]
+        fn side_player_saved_heart_opens_playlists_and_keeps_the_song_saved() {
+            let (ctx, mut app) = accessible_app("side-player-liked-menu");
+            app.apply(
+                Action::SelectPlayerPanelTab(PlayerPanelTab::NowPlaying),
+                &ctx,
+            );
+            let size = egui::vec2(1240.0, 800.0);
+            draw(&ctx, &mut app, size, vec![]);
+            let tree = draw(&ctx, &mut app, size, vec![])
+                .platform_output
+                .accesskit_update
+                .unwrap();
+            let song = app.now_playing().unwrap().uri;
+            assert_eq!(app.is_saved(&song), Some(true));
+            let heart = bounds(&tree, "Add to playlist").center();
+            draw(
+                &ctx,
+                &mut app,
+                size,
+                pointer_click(heart, egui::PointerButton::Primary),
+            );
+            let tree = draw(&ctx, &mut app, size, vec![])
+                .platform_output
+                .accesskit_update
+                .unwrap();
+            assert_eq!(app.is_saved(&song), Some(true));
+            assert!(
+                tree.nodes
+                    .iter()
+                    .any(|(_, n)| n.label() == Some("Remove from Liked Songs"))
+            );
+            app.backend.shutdown();
+        }
+        #[test]
+        fn side_player_controls_change_the_current_playback_and_honor_fixed_volume() {
+            use egui::accesskit::{Action as A, ActionData, Role};
+            let (ctx, mut app) = accessible_app("side-player-actions");
+            apply_flags(&mut app, None, Some("player-bar-spectrum"));
+            app.settings.player_bar_vis = crate::settings::PlayerBarVis::Off;
+            app.apply(
+                Action::SelectPlayerPanelTab(PlayerPanelTab::NowPlaying),
+                &ctx,
+            );
+            let size = egui::vec2(1240.0, 800.0);
+            let activate = |app: &mut App, label: &str, role, action, data| {
+                draw(&ctx, app, size, vec![]);
+                let tree = draw(&ctx, app, size, vec![])
+                    .platform_output
+                    .accesskit_update
+                    .unwrap();
+                let node = accessible_node(&tree, label, role);
+                draw(&ctx, app, size, vec![accessible_action(node, action, data)]);
+            };
+            activate(&mut app, "Pause", Role::Button, A::Click, None);
+            assert!(!app.believed_playing());
+            activate(&mut app, "Play", Role::Button, A::Click, None);
+            assert!(app.believed_playing());
+            activate(
+                &mut app,
+                "Playback position (%)",
+                Role::Slider,
+                A::SetValue,
+                Some(ActionData::NumericValue(50.0)),
+            );
+            assert_eq!(app.now_playing().unwrap().position_ms, 90_000);
+            activate(
+                &mut app,
+                "Volume (%)",
+                Role::Slider,
+                A::SetValue,
+                Some(ActionData::NumericValue(37.0)),
+            );
+            assert_eq!(app.now_playing().unwrap().volume_percent, 37);
+            activate(&mut app, "Mute", Role::Button, A::Click, None);
+            assert_eq!(app.now_playing().unwrap().volume_percent, 0);
+            activate(&mut app, "Unmute", Role::Button, A::Click, None);
+            assert_eq!(app.now_playing().unwrap().volume_percent, 37);
+            app.local_ready = false;
+            app.local.track = None;
+            if let Some(remote) = &mut app.remote {
+                remote.state.device.as_mut().unwrap().supports_volume = Some(false);
+            }
+            app.volume_preview = None;
+            let tree = draw(&ctx, &mut app, size, vec![])
+                .platform_output
+                .accesskit_update
+                .unwrap();
+            let slider = tree
+                .nodes
+                .iter()
+                .find(|(_, n)| n.label() == Some("Volume (%)"))
+                .unwrap();
+            assert!(slider.1.is_disabled());
+            let before = app.now_playing().unwrap().volume_percent;
+            draw(
+                &ctx,
+                &mut app,
+                size,
+                vec![accessible_action(
+                    slider.0,
+                    A::SetValue,
+                    Some(ActionData::NumericValue(80.0)),
+                )],
+            );
+            assert_eq!(app.now_playing().unwrap().volume_percent, before);
+            app.backend.shutdown();
+        }
+
+        #[test]
+        fn side_player_visualizer_respects_the_existing_mode_and_audio_availability() {
+            let (ctx, mut app) = accessible_app("side-player-visualizer");
+            apply_flags(&mut app, None, Some("player-bar-waveform"));
+            let draw_vis = |app: &mut App| {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                    crate::ui::player_bar::panel_visualizer(
+                        app,
+                        ui,
+                        egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(256.0, 64.0)),
+                    )
+                });
+                output.textures_delta.clear();
+                output
+                    .shapes
+                    .iter()
+                    .filter(|shape| matches!(shape.shape, egui::Shape::Path(_)))
+                    .count()
+            };
+            assert!(draw_vis(&mut app) > 20);
+            app.settings.player_bar_vis = crate::settings::PlayerBarVis::Off;
+            assert_eq!(draw_vis(&mut app), 0);
+            app.settings.player_bar_vis = crate::settings::PlayerBarVis::Waveform;
+            app.local.playback = crate::player::Playback::Paused;
+            assert_eq!(draw_vis(&mut app), 0);
+            app.local_ready = false;
+            assert_eq!(draw_vis(&mut app), 0);
+            app.backend.shutdown();
+        }
+        #[test]
+        fn side_player_empty_loading_and_long_rtl_text_keep_controls_visible() {
+            for state in ["empty", "loading", "long-rtl", "zero-duration"] {
+                let (ctx, mut app) = accessible_app(&format!("side-player-state-{state}"));
+                app.settings.sidebar_visible = false;
+                app.settings.queue_width = 280.0;
+                play_here(&mut app);
+                app.local.playback = crate::player::Playback::Paused;
+                match state {
+                    "empty" => {
+                        app.local.track = None;
+                        app.remote = None;
+                        app.resume_track = None;
+                    }
+                    "loading" => app.local.playback = crate::player::Playback::Loading,
+                    "long-rtl" => {
+                        let track = app.local.track.as_mut().unwrap();
+                        track.title = "ليل طويل (Live 2026) שיר ישן ".repeat(20);
+                        track.artists = vec![crate::api::models::ArtistRef {
+                            name: "نور ולהקת הים ".repeat(20),
+                            ..Default::default()
+                        }];
+                    }
+                    _ => {
+                        app.local.track.as_mut().unwrap().duration_ms = 0;
+                    }
+                }
+                app.apply(
+                    Action::SelectPlayerPanelTab(PlayerPanelTab::NowPlaying),
+                    &ctx,
+                );
+                let size = egui::vec2(760.0, 520.0);
+                draw(&ctx, &mut app, size, vec![]);
+                let tree = draw(&ctx, &mut app, size, vec![])
+                    .platform_output
+                    .accesskit_update
+                    .unwrap();
+                for label in [
+                    "Previous",
+                    "Next",
+                    "Repeat",
+                    "Volume (%)",
+                    "Playback position (%)",
+                    "Collapse player",
+                ] {
+                    assert!(
+                        egui::Rect::from_min_size(egui::Pos2::ZERO, size)
+                            .contains_rect(bounds(&tree, label)),
+                        "{state}: {label}"
+                    );
+                }
+                if state == "empty" {
+                    assert!(
+                        tree.nodes
+                            .iter()
+                            .any(|(_, n)| n.label() == Some("Nothing playing")
+                                || n.value() == Some("Nothing playing"))
+                    );
+                }
+                app.backend.shutdown();
+            }
+        }
+        #[test]
+        fn side_player_song_metadata_and_heart_remain_available_in_every_section() {
+            let (ctx, mut app) = accessible_app("side-player-persistent-song");
+            app.settings.queue_width = 280.0;
+            let size = egui::vec2(760.0, 520.0);
+            let song = app.now_playing().unwrap();
+            for tab in [
+                PlayerPanelTab::NowPlaying,
+                PlayerPanelTab::Queue,
+                PlayerPanelTab::Lyrics,
+                PlayerPanelTab::Friends,
+            ] {
+                app.apply(Action::SelectPlayerPanelTab(tab), &ctx);
+                draw(&ctx, &mut app, size, vec![]);
+                let tree = draw(&ctx, &mut app, size, vec![])
+                    .platform_output
+                    .accesskit_update
+                    .unwrap();
+                let footer = egui::containers::panel::PanelState::load(
+                    &ctx,
+                    egui::Id::new("side-player-controls"),
+                )
+                .unwrap()
+                .outer_rect;
+                let heart = bounds(&tree, "Add to playlist");
+                assert!(
+                    footer.contains_rect(heart),
+                    "{tab:?}: heart is fixed below its content"
+                );
+                assert_eq!(
+                    tree.nodes
+                        .iter()
+                        .filter(|(_, n)| n.label() == Some("Add to playlist"))
+                        .count(),
+                    1
+                );
+                for text in [&song.title, &song.subtitle] {
+                    assert!(
+                        tree.nodes.iter().any(|(_, n)| {
+                            (n.label() == Some(text.as_str()) || n.value() == Some(text.as_str()))
+                                && n.bounds().is_some_and(|b| {
+                                    footer.contains_rect(egui::Rect::from_min_max(
+                                        egui::pos2(b.x0 as f32, b.y0 as f32),
+                                        egui::pos2(b.x1 as f32, b.y1 as f32),
+                                    ))
+                                })
+                        }),
+                        "{tab:?}: missing footer {text}"
+                    );
+                }
+            }
+            // Activity has no playing-track row of its own: this drag must
+            // come from the persistent footer's cover.
+            let cover = ctx
+                .read_response(egui::Id::new(("side-player", "now-playing-cover")))
+                .unwrap()
+                .rect
+                .center();
+            draw(
+                &ctx,
+                &mut app,
+                size,
+                vec![
+                    egui::Event::PointerMoved(cover),
+                    egui::Event::PointerButton {
+                        pos: cover,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+            draw(
+                &ctx,
+                &mut app,
+                size,
+                vec![egui::Event::PointerMoved(cover + egui::vec2(20.0, -10.0))],
+            );
+            let payload = egui::DragAndDrop::payload::<DragTrack>(&ctx)
+                .expect("footer song drags from Activity");
+            assert_eq!(payload.items[0].uri(), song.uri);
+            egui::DragAndDrop::clear_payload(&ctx);
+            app.backend.shutdown();
+        }
     }
 }

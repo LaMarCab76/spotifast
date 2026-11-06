@@ -1,6 +1,6 @@
 //! The words of the playing track, in a side panel that follows the song.
 
-use egui::{Align, Color32, Frame, Layout, Margin, Rect, Sense, UiBuilder, pos2, vec2};
+use egui::{Align, Color32, Frame, Layout, Rect, Sense, UiBuilder, pos2, vec2};
 
 use crate::app::App;
 use crate::i18n::{gettext, pgettext};
@@ -36,91 +36,34 @@ fn blend(from: egui::Color32, to: egui::Color32, t: f32) -> egui::Color32 {
     egui::Color32::from(egui::Rgba::from(from) * (1.0 - t) + egui::Rgba::from(to) * t)
 }
 
-pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
+pub(super) fn section(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    let fit = super::yielding_panel(
-        ui.ctx(),
-        "lyrics-panel",
-        theme::SIDE_PANEL_MIN_WIDTH..=640.0,
-        app.settings.lyrics_width,
-        ui.available_width() - super::topbar::least_width(ui.ctx()),
-    );
-    let panel = super::docked_panel("lyrics-panel", super::panels_on_left(app))
-        .resizable(true)
-        .default_size(app.settings.lyrics_width)
-        .size_range(fit.range.clone())
-        .show_separator_line(false)
-        .frame(
-            Frame::new()
-                .fill(palette.panel)
-                .inner_margin(Margin::symmetric(12, 12)),
+    ui.horizontal(|ui| {
+        ui.add_space(4.0);
+        theme::text(
+            ui,
+            gettext(app.locale, "Lyrics"),
+            theme::bold(18.0),
+            palette.text,
         );
-    let response = panel.show(ui, |ui| {
-        let window_controls =
-            super::window_controls_reservation(ui.ctx(), app, ui.available_width());
-        ui.add_space(
-            window_controls.lyrics_top
-                + super::left_corner_inset(ui.ctx(), app, super::Header::Lyrics),
-        );
-        ui.horizontal(|ui| {
-            ui.add_space(4.0);
-            theme::text(
-                ui,
-                gettext(app.locale, "Lyrics"),
-                theme::bold(18.0),
-                palette.text,
-            );
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if theme::icon_button(
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            let loaded = matches!(&app.lyrics, Loadable::Loaded(Some(_)));
+            if loaded
+                && !app.lyrics_following
+                && theme::pill_button(
                     ui,
-                    Icon::X,
-                    18.0,
-                    palette.secondary,
-                    palette.text,
-                    &gettext(app.locale, "Close"),
+                    &palette,
+                    &pgettext(app.locale, "lyrics", "Follow"),
+                    false,
                 )
                 .clicked()
-                {
-                    app.actions.push(Action::ToggleLyricsPanel);
-                }
-                if theme::icon_button(
-                    ui,
-                    Icon::Expand,
-                    18.0,
-                    palette.secondary,
-                    palette.text,
-                    &gettext(app.locale, "Full screen lyrics"),
-                )
-                .clicked()
-                {
-                    app.actions.push(Action::SetLyricsFullscreen(true));
-                }
-                let loaded = matches!(&app.lyrics, Loadable::Loaded(Some(_)));
-                if loaded
-                    && !app.lyrics_following
-                    && theme::pill_button(
-                        ui,
-                        &palette,
-                        &pgettext(app.locale, "lyrics", "Follow"),
-                        false,
-                    )
-                    .clicked()
-                {
-                    app.lyrics_following = true;
-                    app.lyrics_line_shown = None;
-                }
-            });
+            {
+                app.actions.push(Action::FollowLyrics);
+            }
         });
-        ui.add_space(8.0);
-        contents(app, ui);
     });
-    let current_width = response.response.rect.width();
-    if (app.settings.lyrics_width - current_width).abs() > 1.0
-        && super::panel_width_chosen(ui.ctx(), "lyrics-panel", &fit)
-    {
-        app.settings.lyrics_width = current_width;
-        app.actions.push(Action::SettingsChanged);
-    }
+    ui.add_space(8.0);
+    contents(app, ui);
 }
 
 fn contents(app: &mut App, ui: &mut egui::Ui) {

@@ -15,6 +15,7 @@ mod lyrics;
 pub mod new_releases;
 pub(crate) mod now_playing;
 pub mod player_bar;
+pub(crate) mod player_panel;
 mod prerelease;
 pub mod queue;
 pub mod radio;
@@ -95,24 +96,19 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     if app.lyrics_fullscreen.is_some() {
         lyrics::fullscreen_background(app, ui);
     }
-    player_bar::show(app, ui);
+    let lateral_player = app.lyrics_fullscreen.is_none() && side_panel_open(app);
+    let mut player_rect = None;
+    if !lateral_player {
+        player_bar::show(app, ui);
+    }
     if app.lyrics_fullscreen.is_some() {
         lyrics::fullscreen(app, ui);
     } else {
         if app.settings.sidebar_visible {
             sidebar::show(app, ui);
         }
-        if app.show_queue_panel {
-            queue::side_panel(app, ui);
-        }
-        if app.show_lyrics_panel {
-            lyrics::side_panel(app, ui);
-        }
-        if app.show_friends_panel {
-            friends::side_panel(app, ui);
-        }
-        if app.show_now_playing_panel {
-            now_playing::side_panel(app, ui);
+        if lateral_player {
+            player_rect = Some(player_panel::show(app, ui));
         }
         central(app, ui);
     }
@@ -121,7 +117,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     dialogs::show(app, ctx);
     update::show(app, ctx);
     widgets::drag_ghost(ctx, &app.palette, app.locale);
-    toasts(app, ctx, theme::PLAYER_BAR_HEIGHT + 16.0);
+    let bottom = if lateral_player {
+        16.0
+    } else {
+        theme::PLAYER_BAR_HEIGHT + 16.0
+    };
+    let right = player_rect
+        .filter(|_| !panels_on_left(app))
+        .map_or(0.0, |rect| rect.width());
+    toasts_at(app, ctx, bottom, right);
     caption_buttons(ui, &app.palette, app.locale);
     fastframe_titlebar::resize(ui);
 }
@@ -668,7 +672,7 @@ pub(crate) fn sidebar_icon(app: &App) -> Icon {
 pub(super) enum Header {
     TopBar,
     Sidebar,
-    /// The queue, or listening activity or Now playing in its place.
+    /// The common player-panel header, above all four sections.
     Queue,
     Lyrics,
 }
@@ -702,8 +706,8 @@ pub(super) fn corner_header(app: &App, left_corner: bool) -> Header {
     corner_header_for(
         panels_on_left(app),
         app.settings.sidebar_visible,
-        app.show_queue_panel || app.show_friends_panel || app.show_now_playing_panel,
-        app.show_lyrics_panel,
+        side_panel_open(app),
+        false,
         left_corner,
     )
 }
@@ -813,12 +817,19 @@ pub fn blend(base: Color32, tint: Color32, amount: f32) -> Color32 {
 }
 
 fn toasts(app: &mut App, ctx: &egui::Context, bottom_offset: f32) {
+    toasts_at(app, ctx, bottom_offset, 0.0);
+}
+
+fn toasts_at(app: &mut App, ctx: &egui::Context, bottom_offset: f32, right_offset: f32) {
     if app.toasts.is_empty() {
         return;
     }
     let palette = app.palette;
     egui::Area::new(egui::Id::new("toasts"))
-        .anchor(Align2::RIGHT_BOTTOM, vec2(-20.0, -bottom_offset))
+        .anchor(
+            Align2::RIGHT_BOTTOM,
+            vec2(-20.0 - right_offset, -bottom_offset),
+        )
         .order(egui::Order::Tooltip)
         .interactable(false)
         .show(ctx, |ui| {

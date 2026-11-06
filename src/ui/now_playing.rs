@@ -2,7 +2,7 @@
 //! its Now Playing view: the cover, the song and its artists, the first
 //! artist's card, the song's artists, and what plays next.
 
-use egui::{Align, Frame, Layout, Margin, Sense, Vec2};
+use egui::{Frame, Margin, Sense, Vec2};
 
 use crate::api::models::{ArtistRef, PlayableItem, pick_image};
 use crate::app::{App, NowPlaying};
@@ -14,114 +14,47 @@ use crate::util;
 use super::widgets;
 
 /// The panel's id, which egui remembers its width under.
-pub(crate) const PANEL_ID: &str = "now-playing-panel";
+pub(crate) const PANEL_ID: &str = super::player_panel::PANEL_ID;
 /// Rows of the biography shown before it is cut.
 const BIOGRAPHY_ROWS: usize = 4;
 /// The corner of the cover and the cards.
 const RADIUS: f32 = 8.0;
 
-pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
-    let palette = app.palette;
-    let locale = app.locale;
-    let fit = super::yielding_panel(
-        ui.ctx(),
-        PANEL_ID,
-        theme::SIDE_PANEL_MIN_WIDTH..=560.0,
-        app.settings.queue_width,
-        ui.available_width() - super::topbar::least_width(ui.ctx()),
-    );
-    let panel = super::docked_panel(PANEL_ID, super::panels_on_left(app))
-        .resizable(true)
-        .default_size(app.settings.queue_width)
-        .size_range(fit.range.clone())
-        .show_separator_line(false)
-        .frame(
-            Frame::new()
-                .fill(palette.panel)
-                .inner_margin(Margin::symmetric(12, 12)),
-        );
-    let response = panel.show(ui, |ui| {
-        // The panel sits where the Queue would, under the same controls.
-        let window_controls =
-            super::window_controls_reservation(ui.ctx(), app, ui.available_width());
-        ui.add_space(
-            window_controls.queue_top
-                + super::left_corner_inset(ui.ctx(), app, super::Header::Queue),
-        );
-        let now = app.now_playing();
-        let from = now.as_ref().and_then(|_| app.playing_from());
-        let mut close = false;
-        egui::Sides::new().shrink_left().show(
-            ui,
-            |ui| {
-                ui.add_space(4.0);
-                match from {
-                    // Spotify names the panel after where the songs come from.
-                    Some(from) => match from.page {
-                        Some(page) => {
-                            if theme::link(ui, from.name, theme::bold(16.0), palette.text).clicked()
-                            {
-                                app.actions.push(Action::Open(page));
-                            }
-                        }
-                        None => {
-                            theme::text(ui, from.name, theme::bold(16.0), palette.text);
-                        }
-                    },
-                    None => {
-                        theme::text(
-                            ui,
-                            gettext(locale, "Now playing"),
-                            theme::bold(16.0),
-                            palette.text,
-                        );
-                    }
-                }
-            },
-            |ui| {
-                close = theme::icon_button(
-                    ui,
-                    Icon::X,
-                    18.0,
-                    palette.secondary,
-                    palette.text,
-                    &gettext(locale, "Close"),
-                )
-                .clicked();
-            },
-        );
-        if close {
-            app.actions.push(Action::ToggleNowPlayingPanel);
+pub(super) fn section(app: &mut App, ui: &mut egui::Ui) {
+    let now = app.now_playing();
+    if let Some(from) = now.as_ref().and_then(|_| app.playing_from()) {
+        if let Some(page) = from.page {
+            if theme::link(ui, from.name, theme::bold(16.0), app.palette.text).clicked() {
+                app.actions.push(Action::Open(page));
+            }
+        } else {
+            theme::text(ui, from.name, theme::bold(16.0), app.palette.text);
         }
-        ui.add_space(12.0);
-        egui::ScrollArea::vertical()
-            .id_salt("now-playing-panel-scroll")
-            .auto_shrink([false, false])
-            .show(ui, |ui| match now {
-                Some(now) => contents(app, ui, &now),
-                None => widgets::empty_state(
-                    ui,
-                    &palette,
-                    Icon::Music,
-                    &gettext(locale, "Nothing playing"),
-                    &gettext(locale, "Pick a song, album, or playlist"),
-                ),
-            });
-    });
-    // The panel shares the Queue panel's width, so switching between the two
-    // never moves the page.
-    let width = response.response.rect.width();
-    if (width - app.settings.queue_width).abs() > 1.0
-        && super::panel_width_chosen(ui.ctx(), PANEL_ID, &fit)
-    {
-        app.settings.queue_width = width;
-        app.actions.push(Action::SettingsChanged);
+        ui.add_space(10.0);
     }
+    let art_side = ui
+        .available_width()
+        .min((ui.available_height() * 0.6).max(64.0));
+    egui::ScrollArea::vertical()
+        .id_salt("now-playing-panel-scroll")
+        .auto_shrink([false, false])
+        .show(ui, |ui| match now {
+            Some(now) => contents(app, ui, &now, art_side),
+            None => widgets::empty_state(
+                ui,
+                &app.palette,
+                Icon::Music,
+                &gettext(app.locale, "Nothing playing"),
+                &gettext(app.locale, "Pick a song, album, or playlist"),
+            ),
+        });
 }
 
-fn contents(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying) {
-    let width = ui.available_width();
-    cover(app, ui, now, width);
+fn contents(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying, art_side: f32) {
+    ui.horizontal(|ui| {
+        ui.add_space(((ui.available_width() - art_side) / 2.0).max(0.0));
+        cover(app, ui, now, art_side);
+    });
     ui.add_space(14.0);
     title(app, ui, now);
     // An episode, a local file, or a song without artists has no card.
@@ -144,7 +77,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying) {
 /// The cover at the panel's width; a click opens its album or podcast.
 fn cover(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying, width: f32) {
     let palette = app.palette;
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(width), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(width), Sense::click_and_drag());
     let url = now.art_url.clone().or_else(|| now.art_small.clone());
     widgets::playing_cover(
         ui,
@@ -155,6 +88,7 @@ fn cover(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying, width: f32) {
         rect,
         RADIUS,
     );
+    song_interaction(app, ui, now, &response);
     if let Some(page) = cover_page(now)
         && response
             .on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -162,6 +96,28 @@ fn cover(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying, width: f32) {
     {
         app.actions.push(Action::Open(page));
     }
+}
+
+fn song_interaction(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying, response: &egui::Response) {
+    let Some(item) = app.now_playing_item().filter(|item| item.uri() == now.uri) else {
+        return;
+    };
+    if response.drag_started_by(egui::PointerButton::Primary) {
+        egui::DragAndDrop::set_payload(
+            ui.ctx(),
+            crate::model::DragTrack {
+                title: item.name().to_string(),
+                image: app.item_image(&item, 64),
+                items: vec![item.clone()],
+                from: None,
+                source_playlist: None,
+            },
+        );
+    }
+    let context = app.editable_context_playlist();
+    egui::Popup::context_menu(response)
+        .frame(widgets::menu_frame(&app.palette))
+        .show(|ui| widgets::item_menu(ui, app, &item, context.as_ref(), None));
 }
 
 /// A song from the local files folder: Spotify knows only its tags.
@@ -177,18 +133,11 @@ fn cover_page(now: &NowPlaying) -> Option<Page> {
         .or_else(|| now.show_id.clone().map(Page::Show))
 }
 
-/// The song's title on up to two lines, its artists under it, and the
-/// heart beside them.
+/// The song's large title and artists. Its heart stays in the persistent footer.
 fn title(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying) {
     let palette = app.palette;
-    let locale = app.locale;
-    let heart = if now.is_episode || local_file(now) {
-        0.0
-    } else {
-        32.0
-    };
     ui.horizontal_top(|ui| {
-        let text_width = (ui.available_width() - heart).max(40.0);
+        let text_width = ui.available_width().max(40.0);
         ui.vertical(|ui| {
             ui.set_width(text_width);
             ui.spacing_mut().item_spacing.y = 2.0;
@@ -204,8 +153,9 @@ fn title(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying) {
             let response = ui.add(
                 egui::Label::new(galley)
                     .selectable(false)
-                    .sense(Sense::click()),
+                    .sense(Sense::click_and_drag()),
             );
+            song_interaction(app, ui, now, &response);
             if let Some(page) = cover_page(now)
                 && response
                     .on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -213,7 +163,7 @@ fn title(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying) {
             {
                 app.actions.push(Action::Open(page));
             }
-            ui.horizontal_wrapped(|ui| {
+            let artists = ui.horizontal_wrapped(|ui| {
                 if now.artists.is_empty() {
                     let response =
                         theme::link(ui, &now.subtitle, theme::regular(14.0), palette.secondary);
@@ -232,40 +182,9 @@ fn title(app: &mut App, ui: &mut egui::Ui, now: &NowPlaying) {
                     );
                 }
             });
+            let response = artists.response.interact(Sense::drag());
+            song_interaction(app, ui, now, &response);
         });
-        if heart > 0.0 {
-            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                let liked = app.is_saved(&now.uri).unwrap_or(false);
-                let label = if liked {
-                    gettext(locale, "Remove from Liked Songs")
-                } else {
-                    gettext(locale, "Save to Liked Songs")
-                };
-                let response = theme::icon_button(
-                    ui,
-                    if liked {
-                        Icon::HeartFilled
-                    } else {
-                        Icon::Heart
-                    },
-                    20.0,
-                    if liked {
-                        palette.accent
-                    } else {
-                        palette.secondary
-                    },
-                    if liked {
-                        palette.accent_hover
-                    } else {
-                        palette.text
-                    },
-                    &label,
-                );
-                if response.clicked() {
-                    app.actions.push(Action::ToggleSaved(now.uri.clone()));
-                }
-            });
-        }
     });
 }
 

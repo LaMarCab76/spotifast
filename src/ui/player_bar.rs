@@ -11,6 +11,42 @@ use crate::util;
 
 use super::widgets::{SliderEvent, thin_slider};
 
+/// Controls keep their IDs between sections, but never across surfaces.
+#[derive(Clone, Copy)]
+pub(super) enum Surface {
+    Bar,
+    Fullscreen,
+    Panel,
+}
+
+impl Surface {
+    fn id(self, name: &str) -> egui::Id {
+        match self {
+            Self::Bar => egui::Id::new(name),
+            Self::Fullscreen => egui::Id::new(("fullscreen-player", name)),
+            Self::Panel => egui::Id::new(("side-player", name)),
+        }
+    }
+}
+
+pub(crate) fn cancel_gestures(ctx: &egui::Context) {
+    ctx.stop_dragging();
+    for surface in [Surface::Bar, Surface::Fullscreen, Surface::Panel] {
+        for name in ["seek-slider", "volume-slider"] {
+            ctx.data_mut(|data| data.remove::<f32>(surface.id(name)));
+        }
+    }
+    close_saved_popups(ctx);
+}
+
+pub(crate) fn close_saved_popups(ctx: &egui::Context) {
+    for surface in [Surface::Bar, Surface::Fullscreen, Surface::Panel] {
+        let id = surface.id(LIKED_POPUP_ID);
+        egui::Popup::close_id(ctx, id);
+        ctx.data_mut(|data| data.remove::<String>(id.with("query")));
+    }
+}
+
 /// How much of the playing art's tint the bar's fill carries.
 const TINT_STRENGTH: f32 = 0.12;
 /// How long the bar takes to cross over to a new song's tint.
@@ -108,6 +144,11 @@ fn reveal_controls(app: &App, ctx: &egui::Context, bar: Rect, moving: bool) -> (
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     use crate::settings::{LyricsVisualizer, PlayerBarVis};
     let fullscreen = app.lyrics_fullscreen.is_some() && !app.immersive();
+    let surface = if fullscreen {
+        Surface::Fullscreen
+    } else {
+        Surface::Bar
+    };
     let strip = fullscreen
         && app.settings.lyrics_presentation.visualizer == LyricsVisualizer::Strip
         && app.settings.player_bar_vis != PlayerBarVis::Off
@@ -206,8 +247,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 pos2(row.left() + side, row.top()),
                 pos2(row.right() - side, row.bottom()),
             );
-            now_playing_block(app, ui, left, now.as_ref());
-            transport(app, ui, now.as_ref(), center, fullscreen.then_some(rect));
+            now_playing_block(app, ui, left, now.as_ref(), surface);
+            transport(
+                app,
+                ui,
+                now.as_ref(),
+                center,
+                fullscreen.then_some(rect),
+                surface,
+            );
             let right_band = Rect::from_min_size(
                 pos2(row.right() - side, row.center().y - 15.0),
                 vec2(side, 30.0),
@@ -222,6 +270,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 &mut right_ui,
                 now.as_ref(),
                 center.center().x + transport_width() / 2.0,
+                surface,
             );
         });
 }
@@ -519,7 +568,7 @@ fn waveform(
 
 /// Ease the final fill's RGB. Untinted custom panels keep their alpha while
 /// the colour returns to the panel colour.
-fn eased_fill(ctx: &egui::Context, panel: Color32, tint: Option<Color32>) -> Color32 {
+pub(super) fn eased_fill(ctx: &egui::Context, panel: Color32, tint: Option<Color32>) -> Color32 {
     let target = tint.map_or(panel, |tint| super::blend(panel, tint, TINT_STRENGTH));
     // Color32 stores premultiplied RGB, so interpolate unmultiplied channels.
     let [r, g, b, _] = target.to_srgba_unmultiplied();
@@ -544,7 +593,13 @@ fn eased_fill(ctx: &egui::Context, panel: Color32, tint: Option<Color32>) -> Col
     }
 }
 
-fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option<&NowPlaying>) {
+pub(super) fn now_playing_block(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    region: Rect,
+    now: Option<&NowPlaying>,
+    surface: Surface,
+) {
     let palette = app.palette;
     let cy = region.center().y;
     let cover_rect = Rect::from_min_size(pos2(region.left() + 4.0, cy - 28.0), Vec2::splat(56.0));
@@ -593,7 +648,7 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
         Sense::click()
     };
     let cover_response = ui
-        .interact(cover_rect, egui::Id::new("now-playing-cover"), drag_sense)
+        .interact(cover_rect, surface.id("now-playing-cover"), drag_sense)
         .on_hover_cursor(if song.is_some() {
             egui::CursorIcon::Grab
         } else {
@@ -728,23 +783,6 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
     }
 
     if !now.is_episode {
-        let saved = app.is_saved(&now.uri).unwrap_or(false);
-        // A liked heart stays green under the pointer, like shuffle.
-        let (icon, color, hover, tooltip) = if saved {
-            (
-                Icon::HeartFilled,
-                palette.accent,
-                palette.accent_hover,
-                gettext(app.locale, "Add to playlist"),
-            )
-        } else {
-            (
-                Icon::Heart,
-                palette.secondary,
-                palette.text,
-                gettext(app.locale, "Save to Liked Songs"),
-            )
-        };
         // Sit the heart just past the actual text, not at the region's far
         // edge, so it stays visually attached to the title.
         let heart_x = (text_left + displayed_text_width + 21.0).min(region.right() - 21.0);
@@ -754,56 +792,84 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
                 .max_rect(heart_rect)
                 .layout(Layout::centered_and_justified(egui::Direction::LeftToRight)),
         );
-        let response = theme::icon_button(&mut heart_ui, icon, 17.0, color, hover, &tooltip);
-        let popup_id = egui::Id::new(LIKED_POPUP_ID);
-        // A liked song's heart opens Add to playlist, as Spotify's does,
-        // with Remove from Liked Songs below the playlists (#792). The first
-        // click on a song not yet liked still likes it at once.
-        match song.as_ref().filter(|_| saved) {
-            None => {
-                egui::Popup::close_id(ui.ctx(), popup_id);
-                if response.clicked() {
-                    app.actions.push(Action::ToggleSaved(now.uri.clone()));
-                }
+        saved_button(app, &mut heart_ui, now, song.as_ref(), surface);
+    }
+}
+
+pub(super) fn saved_button(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    now: &NowPlaying,
+    song: Option<&crate::api::models::PlayableItem>,
+    surface: Surface,
+) {
+    let palette = app.palette;
+    let saved = app.is_saved(&now.uri).unwrap_or(false);
+    // A liked heart stays green under the pointer, like shuffle.
+    let (icon, color, hover, tooltip) = if saved {
+        (
+            Icon::HeartFilled,
+            palette.accent,
+            palette.accent_hover,
+            gettext(app.locale, "Add to playlist"),
+        )
+    } else {
+        (
+            Icon::Heart,
+            palette.secondary,
+            palette.text,
+            gettext(app.locale, "Save to Liked Songs"),
+        )
+    };
+    let response = theme::icon_button(ui, icon, 17.0, color, hover, &tooltip);
+    let popup_id = surface.id(LIKED_POPUP_ID);
+    // A liked song's heart opens Add to playlist, as Spotify's does,
+    // with Remove from Liked Songs below the playlists (#792). The first
+    // click on a song not yet liked still likes it at once.
+    match song.filter(|_| saved) {
+        None => {
+            egui::Popup::close_id(ui.ctx(), popup_id);
+            if response.clicked() {
+                app.actions.push(Action::ToggleSaved(now.uri.clone()));
             }
-            Some(item) => {
-                let query_id = popup_id.with("query");
-                let shown = egui::Popup::menu(&response)
-                    .id(popup_id)
-                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                    .frame(super::widgets::menu_frame(&palette))
-                    .show(|ui| {
-                        let stored = ui.data(|data| data.get_temp::<String>(query_id));
-                        let fresh = stored.is_none();
-                        let mut query = stored.unwrap_or_default();
-                        let before = app.actions.len();
-                        let field = super::widgets::playlist_picker(
-                            ui,
-                            app,
-                            std::slice::from_ref(item),
-                            &mut query,
-                        );
-                        if fresh {
-                            field.request_focus();
-                        }
-                        ui.data_mut(|data| data.insert_temp(query_id, query));
-                        super::widgets::menu_separator(ui, &palette);
-                        if super::widgets::menu_item(
-                            ui,
-                            &palette,
-                            Some(Icon::HeartFilled),
-                            &gettext(app.locale, "Remove from Liked Songs"),
-                        ) {
-                            app.actions.push(Action::ToggleSaved(now.uri.clone()));
-                        }
-                        // A playlist, New playlist, or Remove closes it.
-                        if app.actions.len() > before {
-                            ui.close();
-                        }
-                    });
-                if shown.is_none() {
-                    ui.data_mut(|data| data.remove::<String>(query_id));
-                }
+        }
+        Some(item) => {
+            let query_id = popup_id.with("query");
+            let shown = egui::Popup::menu(&response)
+                .id(popup_id)
+                .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                .frame(super::widgets::menu_frame(&palette))
+                .show(|ui| {
+                    let stored = ui.data(|data| data.get_temp::<String>(query_id));
+                    let fresh = stored.is_none();
+                    let mut query = stored.unwrap_or_default();
+                    let before = app.actions.len();
+                    let field = super::widgets::playlist_picker(
+                        ui,
+                        app,
+                        std::slice::from_ref(item),
+                        &mut query,
+                    );
+                    if fresh {
+                        field.request_focus();
+                    }
+                    ui.data_mut(|data| data.insert_temp(query_id, query));
+                    super::widgets::menu_separator(ui, &palette);
+                    if super::widgets::menu_item(
+                        ui,
+                        &palette,
+                        Some(Icon::HeartFilled),
+                        &gettext(app.locale, "Remove from Liked Songs"),
+                    ) {
+                        app.actions.push(Action::ToggleSaved(now.uri.clone()));
+                    }
+                    // A playlist, New playlist, or Remove closes it.
+                    if app.actions.len() > before {
+                        ui.close();
+                    }
+                });
+            if shown.is_none() {
+                ui.data_mut(|data| data.remove::<String>(query_id));
             }
         }
     }
@@ -825,6 +891,7 @@ fn transport(
     now: Option<&NowPlaying>,
     region: Rect,
     fullscreen: Option<Rect>,
+    surface: Surface,
 ) {
     let palette = app.palette;
     // Everything here is placed with explicit rects: egui's implicit rows
@@ -989,7 +1056,7 @@ fn transport(
         app.actions.push(Action::CycleRepeat);
     }
 
-    progress(app, ui, now, region, cy + 31.0, fullscreen);
+    progress(app, ui, now, region, cy + 31.0, fullscreen, surface);
 }
 
 fn progress(
@@ -999,6 +1066,7 @@ fn progress(
     region: Rect,
     row_cy: f32,
     fullscreen: Option<Rect>,
+    surface: Surface,
 ) {
     let palette = app.palette;
     let row_cy = fullscreen.map_or(row_cy, |rect| rect.bottom() - 15.0);
@@ -1060,7 +1128,7 @@ fn progress(
     match thin_slider(
         &mut slider_ui,
         &palette,
-        egui::Id::new("seek-slider"),
+        surface.id("seek-slider"),
         &gettext(app.locale, "Playback position (%)"),
         fraction,
         slider_width,
@@ -1092,23 +1160,18 @@ const EXTRAS_WIDTH: f32 = 92.0 + 4.0 * (18.0 + theme::ICON_BUTTON_PAD) + 4.0 * 6
 /// Whether the full screen button has room beside the rest, keeping clear of
 /// the transport, with `room` points to the right of it.
 fn full_screen_button_fits(room: f32) -> bool {
-    room >= EXTRAS_WIDTH + 18.0 + theme::ICON_BUTTON_PAD + 6.0 + TRANSPORT_GAP
+    room >= EXTRAS_WIDTH + 2.0 * (18.0 + theme::ICON_BUTTON_PAD + 6.0) + TRANSPORT_GAP
 }
 
-fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, transport_right: f32) {
+fn extras(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    now: Option<&NowPlaying>,
+    transport_right: f32,
+    surface: Surface,
+) {
     let palette = app.palette;
     ui.spacing_mut().item_spacing.x = 6.0;
-    let volume = now
-        .map(|now| now.volume_percent)
-        .unwrap_or_else(|| crate::app::volume_to_percent(app.local.volume));
-    let shown = match app.volume_preview {
-        Some(fraction) => (fraction * 100.0).round() as u8,
-        None => volume,
-    };
-    // Some remote devices, such as a phone playing over Bluetooth, refuse
-    // volume changes from other apps: show their volume but don't offer to
-    // change it.
-    let adjustable = !app.soloist_waiting() && now.is_none_or(|now| now.can_set_volume);
     // The bar's last control, right of the volume, like Spotify's. It gives
     // way before anything else, once Listening activity has; **F** stays.
     let room = ui.max_rect().right() - transport_right;
@@ -1123,87 +1186,11 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, transport_
             app.actions.push(Action::SetLyricsFullscreen(!inside));
         }
     }
-    let controls = ui.add_enabled_ui(adjustable, |ui| {
-        match thin_slider(
-            ui,
-            &palette,
-            egui::Id::new("volume-slider"),
-            &gettext(app.locale, "Volume (%)"),
-            shown as f32 / 100.0,
-            92.0,
-            Some(0.05),
-        ) {
-            SliderEvent::Dragging(value) => {
-                app.volume_preview = Some(value);
-                app.actions
-                    .push(Action::PreviewVolume((value * 100.0).round() as u8));
-            }
-            SliderEvent::Committed(value) => {
-                app.volume_preview = None;
-                app.actions
-                    .push(Action::SetVolume((value * 100.0).round() as u8));
-            }
-            SliderEvent::None => {}
-        }
-        let volume_icon = match shown {
-            0 => Icon::VolumeX,
-            1..=33 => Icon::Volume,
-            34..=66 => Icon::Volume1,
-            _ => Icon::Volume2,
-        };
-        if theme::icon_button(
-            ui,
-            volume_icon,
-            18.0,
-            palette.secondary,
-            palette.text,
-            &if shown == 0 {
-                gettext(app.locale, "Unmute")
-            } else {
-                gettext(app.locale, "Mute")
-            },
-        )
-        .clicked()
-        {
-            app.actions.push(Action::ToggleMute);
-        }
-    });
-    if !adjustable {
-        ui.interact(
-            controls.response.rect,
-            egui::Id::new("volume-fixed"),
-            egui::Sense::hover(),
-        )
-        .on_hover_text(gettext(
-            app.locale,
-            "This device's volume can't be changed from Spotifast",
-        ));
-    }
+    // Keep Now playing reachable at the window's minimum width.
+    let slider_width = (room - (EXTRAS_WIDTH - 92.0) - 46.0).clamp(48.0, 92.0);
+    volume_controls(app, ui, now, slider_width, surface);
     ui.add_space(4.0);
-    let remote = now.is_some_and(|now| !now.local) && !app.targets_own_soloist();
-    // Playing elsewhere, the button shows that device's own icon.
-    let icon = now
-        .filter(|_| remote)
-        .and_then(|now| now.device_kind.as_deref())
-        .map_or(Icon::Speaker, super::devices::device_icon);
-    let devices = theme::icon_button(
-        ui,
-        icon,
-        18.0,
-        if remote {
-            palette.accent
-        } else {
-            palette.secondary
-        },
-        palette.text,
-        &gettext(app.locale, "Connect to a device"),
-    );
-    ui.ctx().data_mut(|data| {
-        data.insert_temp(egui::Id::new(super::devices::BUTTON_RECT_ID), devices.rect)
-    });
-    if devices.clicked() {
-        app.actions.push(Action::ToggleDevicesPopup);
-    }
+    devices_button(app, ui, now);
     let queue_open = app.show_queue_panel || matches!(app.page(), Page::Queue);
     let queue_button = theme::icon_button(
         ui,
@@ -1247,8 +1234,8 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, transport_
     {
         app.actions.push(Action::ToggleLyricsPanel);
     }
-    // Now playing and then Listening activity are the first to go in a
-    // narrow window, so they never crowd the transport.
+    // Now playing stays reachable at the minimum width. Listening activity
+    // follows only once fullscreen and the transport have their room.
     let button = 18.0 + theme::ICON_BUTTON_PAD;
     let left = ui.min_rect().left() - ui.spacing().item_spacing.x - button;
     if left - transport_right >= TRANSPORT_GAP
@@ -1269,7 +1256,8 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, transport_
         app.actions.push(Action::ToggleNowPlayingPanel);
     }
     let left = ui.min_rect().left() - ui.spacing().item_spacing.x - button;
-    if left - transport_right >= TRANSPORT_GAP
+    if full_screen_button_fits(room)
+        && left - transport_right >= TRANSPORT_GAP
         && theme::icon_button(
             ui,
             Icon::Users,
@@ -1285,6 +1273,140 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, transport_
         .clicked()
     {
         app.actions.push(Action::ToggleFriendsPanel);
+    }
+}
+
+pub(super) fn volume_controls(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    now: Option<&NowPlaying>,
+    width: f32,
+    surface: Surface,
+) {
+    let palette = app.palette;
+    let volume = now
+        .map(|now| now.volume_percent)
+        .unwrap_or_else(|| crate::app::volume_to_percent(app.local.volume));
+    let shown = match app.volume_preview {
+        Some(fraction) => (fraction * 100.0).round() as u8,
+        None => volume,
+    };
+    // Some remote devices, such as a phone playing over Bluetooth, refuse
+    // volume changes from other apps: show their volume but don't offer to
+    // change it.
+    let adjustable = !app.soloist_waiting() && now.is_none_or(|now| now.can_set_volume);
+    let controls = ui.add_enabled_ui(adjustable, |ui| {
+        match thin_slider(
+            ui,
+            &palette,
+            surface.id("volume-slider"),
+            &gettext(app.locale, "Volume (%)"),
+            shown as f32 / 100.0,
+            width,
+            Some(0.05),
+        ) {
+            SliderEvent::Dragging(value) => {
+                app.volume_preview = Some(value);
+                app.actions
+                    .push(Action::PreviewVolume((value * 100.0).round() as u8));
+            }
+            SliderEvent::Committed(value) => {
+                app.volume_preview = None;
+                app.actions
+                    .push(Action::SetVolume((value * 100.0).round() as u8));
+            }
+            SliderEvent::None => {}
+        }
+        let volume_icon = match shown {
+            0 => Icon::VolumeX,
+            1..=33 => Icon::Volume,
+            34..=66 => Icon::Volume1,
+            _ => Icon::Volume2,
+        };
+        if theme::icon_button(
+            ui,
+            volume_icon,
+            18.0,
+            palette.secondary,
+            palette.text,
+            &if shown == 0 {
+                gettext(app.locale, "Unmute")
+            } else {
+                gettext(app.locale, "Mute")
+            },
+        )
+        .clicked()
+        {
+            app.actions.push(Action::ToggleMute);
+        }
+    });
+    if !adjustable {
+        ui.interact(
+            controls.response.rect,
+            surface.id("volume-fixed"),
+            egui::Sense::hover(),
+        )
+        .on_hover_text(gettext(
+            app.locale,
+            "This device's volume can't be changed from Spotifast",
+        ));
+    }
+}
+
+pub(super) fn devices_button(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
+    let palette = app.palette;
+    let remote = now.is_some_and(|now| !now.local) && !app.targets_own_soloist();
+    // Playing elsewhere, the button shows that device's own icon.
+    let icon = now
+        .filter(|_| remote)
+        .and_then(|now| now.device_kind.as_deref())
+        .map_or(Icon::Speaker, super::devices::device_icon);
+    let devices = theme::icon_button(
+        ui,
+        icon,
+        18.0,
+        if remote {
+            palette.accent
+        } else {
+            palette.secondary
+        },
+        palette.text,
+        &gettext(app.locale, "Connect to a device"),
+    );
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(egui::Id::new(super::devices::BUTTON_RECT_ID), devices.rect)
+    });
+    if devices.clicked() {
+        app.actions.push(Action::ToggleDevicesPopup);
+    }
+}
+
+/// The panel keeps transport and progress on a stable fixed footer.
+pub(super) fn panel_transport(app: &mut App, ui: &mut egui::Ui, rect: Rect) {
+    let now = app.now_playing();
+    transport(app, ui, now.as_ref(), rect, Some(rect), Surface::Panel);
+}
+
+/// Draw only the visible visualizer surface, using the bar's analyzer and settings.
+pub(crate) fn panel_visualizer(app: &mut App, ui: &egui::Ui, rect: Rect) {
+    if !app.visualizers_available() {
+        return;
+    }
+    let now = app.now_playing();
+    if visualizer(app, ui, rect, now.as_ref(), 0.0) {
+        theme::visualiser_frame(ui.ctx(), app.visualiser_fps());
+    }
+    if app.settings.player_bar_vis_click {
+        let response = ui
+            .interact(
+                rect,
+                egui::Id::new("side-player-visualizer"),
+                Sense::click(),
+            )
+            .on_hover_text(gettext(app.locale, "Click to change the visualizer"));
+        if response.clicked() {
+            app.actions.push(Action::CyclePlayerBarVis);
+        }
     }
 }
 
@@ -1473,7 +1595,11 @@ mod player_bar_tint_tests {
     /// A window too narrow for it loses the button, not the volume.
     #[test]
     fn the_full_screen_button_goes_when_the_bar_is_tight() {
-        assert!(full_screen_button_fits(320.0));
+        assert!(full_screen_button_fits(360.0));
+        assert!(
+            !full_screen_button_fits(320.0),
+            "reserve Now playing before fullscreen"
+        );
         assert!(!full_screen_button_fits(200.0));
     }
 }

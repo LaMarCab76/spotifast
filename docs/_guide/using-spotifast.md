@@ -231,25 +231,50 @@ stay until the new list arrives.
 
 ## Now playing
 
-The **Now playing** button in the player bar, or `N`, opens the playing song
-beside the page, as Spotify's own app does. The panel is named after where the
-songs come from, and shows the cover at its full width, the title and artists
-with the heart to like the song, an **About the artist** card for the first
-artist with their portrait, monthly listeners, the start of their biography
-and a Follow button, every artist the song credits when there are several, and
-the song **Next in queue**, with **Open queue** for the rest. Click the cover
-or the title for the album, and an artist for their page. The portrait,
-biography and monthly listeners need local playback signed in; without it the
-card shows what the library already knows. An episode shows its podcast
-instead, and a local file only its tags. Now playing takes the place of the
-queue, lyrics and listening activity, shares the queue's width, and comes back
-after a restart if it was open. While it is open, the cover docked at the
-bottom of the Library sidebar stays hidden.
+The **Now playing** button in the bottom bar, or `N`, opens the side player.
+Its top row switches between **Now playing**, **Queue**, **Lyrics** and
+**Listening activity**. Playback controls stay at the bottom while the section
+above them scrolls: shuffle, previous, play or pause, next, repeat, playback
+position, volume, mute and devices. A compact cover, title, artists and heart
+stay in that footer in every section, with the same drag and song menu as the
+bottom bar. The expand button opens full-screen lyrics.
+The downward chevron collapses the whole player and brings back the bottom bar.
+Only one set of playback controls is shown at a time.
+
+Now playing shows where the songs come from, an artwork cover sized to the
+available height, the title and artists, an **About the artist** card, all
+credited artists and **Next in queue**. Click the cover or title to open the
+album, and an artist for their page. Drag the cover or title to queue the song,
+or right-click for its menu. An unliked song's heart saves it; a liked song's
+heart opens **Add to playlist**, including **Remove from Liked Songs**.
+The portrait, biography and monthly listeners need the Spotify playback session;
+without it the card shows what the library already knows. Episodes show their
+podcast instead, and local files only their tags.
+
+The player shares one remembered width across its sections. Queue keeps its
+**Queue** and **Recent** views and the existing queue rules. `Q` and `L` still
+open or close their sections; selecting an already active section in the top
+row keeps it open. Full-screen lyrics return to the previous section when you
+leave. Changing the queue column with `Q` in full screen takes precedence:
+an open column returns to Queue, and closing a column that started in Queue
+returns to the bottom bar. Starting full screen from the bottom bar returns to
+the bar. Selecting Lyrics or Listening activity while in full screen leaves it
+and selects that section.
+
+The existing **Player bar visualizer** choice also supplies a strip above the
+side player's controls when the window has room and audio is available. It
+stays off when set to **Off**. Clicking the strip cycles the selected visualizer
+when **Click player bar to change visualizer** is enabled. Side-player controls
+stay visible; **Reveal player controls on hover** applies to the bottom bar.
+The Library's expanded artwork stays hidden in Now playing, which already
+shows the large cover. It remains available in the other sections.
+Now playing and Queue retain their existing restart behaviour; Lyrics and
+Listening activity are not restored after restarting.
 
 ## Side panels on the left or the right
 
-Now playing, the queue, lyrics and listening activity open beside the page, on
-the right by default, and the Library sidebar sits on the other side. Choose
+The side player opens beside the page, on the right by default, and the
+Library sidebar sits on the other side. Choose
 **Left** for **Side panels** in Settings, under Appearance, to swap them: the
 panels open on the left and the Library moves to the right. Each keeps the
 width you gave it.

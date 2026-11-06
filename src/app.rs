@@ -655,8 +655,8 @@ pub struct App {
     uploaded_covers: std::collections::HashMap<String, crate::playlist_cover::PendingCover>,
     pub show_queue_panel: bool,
     pub show_lyrics_panel: bool,
-    /// Friend activity takes the right panel's place, so at most one of the
-    /// Queue, Lyrics, Friend activity and Now playing is open.
+    /// The player panel selects exactly one of Queue, Lyrics, Listening
+    /// activity and Now playing above its shared playback controls.
     pub show_friends_panel: bool,
     /// The playing song, large, with its artist and what plays next.
     pub show_now_playing_panel: bool,
@@ -670,6 +670,8 @@ pub struct App {
     pub lyrics_fullscreen: Option<bool>,
     pub lyrics_fullscreen_seen: bool,
     lyrics_fullscreen_restoring: Option<bool>,
+    /// The section suspended by full-screen lyrics, and its initial queue column.
+    player_panel_before_fullscreen: Option<(Option<PlayerPanelTab>, bool)>,
     lyrics_restore_maximized: bool,
     pub lyrics_backdrop: crate::images::LyricsBackdrop,
     pub lyrics_artist_backdrop: crate::images::LyricsBackdrop,
@@ -1395,6 +1397,7 @@ impl App {
             lyrics_fullscreen: None,
             lyrics_fullscreen_seen: false,
             lyrics_fullscreen_restoring: None,
+            player_panel_before_fullscreen: None,
             lyrics_restore_maximized: false,
             lyrics_backdrop: Default::default(),
             lyrics_artist_backdrop: Default::default(),
@@ -12462,9 +12465,82 @@ impl App {
         }
     }
 
+    /// The single section currently occupying the player panel.
+    pub(crate) fn player_panel_tab(&self) -> Option<PlayerPanelTab> {
+        if self.show_queue_panel {
+            Some(PlayerPanelTab::Queue)
+        } else if self.show_lyrics_panel {
+            Some(PlayerPanelTab::Lyrics)
+        } else if self.show_friends_panel {
+            Some(PlayerPanelTab::Friends)
+        } else if self.show_now_playing_panel {
+            Some(PlayerPanelTab::NowPlaying)
+        } else {
+            None
+        }
+    }
+
+    fn set_player_panel_tab(&mut self, tab: Option<PlayerPanelTab>) {
+        self.show_now_playing_panel = tab == Some(PlayerPanelTab::NowPlaying);
+        self.show_queue_panel = tab == Some(PlayerPanelTab::Queue);
+        self.show_lyrics_panel = tab == Some(PlayerPanelTab::Lyrics);
+        self.show_friends_panel = tab == Some(PlayerPanelTab::Friends);
+    }
+
+    fn select_player_panel_tab(&mut self, tab: PlayerPanelTab, ctx: &egui::Context) {
+        crate::ui::player_bar::close_saved_popups(ctx);
+        self.set_player_panel_tab(Some(tab));
+        match tab {
+            PlayerPanelTab::NowPlaying => {
+                self.refresh_queue(true);
+                self.request_now_playing_artist();
+            }
+            PlayerPanelTab::Queue => self.refresh_queue(true),
+            PlayerPanelTab::Lyrics => {
+                self.lyrics_following = true;
+                self.lyrics_line_shown = None;
+                self.request_lyrics();
+            }
+            PlayerPanelTab::Friends => self.refresh_friends(),
+        }
+    }
+
+    /// Stop a gesture before its widget moves to a different player surface.
+    fn finish_player_gesture(&mut self, ctx: &egui::Context) {
+        self.seek_preview = None;
+        if let Some(value) = self.volume_preview.take() {
+            self.set_volume((value * 100.0).round() as u8, true);
+        }
+        crate::ui::player_bar::cancel_gestures(ctx);
+    }
+
+    /// A deliberate change to the full-screen queue takes precedence over
+    /// its section of origin. Otherwise the suspended section comes back.
+    fn player_panel_after_fullscreen(&self) -> Option<PlayerPanelTab> {
+        let Some((origin, queue)) = self.player_panel_before_fullscreen else {
+            return self.player_panel_tab();
+        };
+        if self.show_queue_panel != queue {
+            if self.show_queue_panel {
+                Some(PlayerPanelTab::Queue)
+            } else {
+                origin.filter(|tab| *tab != PlayerPanelTab::Queue)
+            }
+        } else {
+            origin
+        }
+    }
+
     fn leave_lyrics_fullscreen(&mut self, ctx: &egui::Context) {
         self.end_immersive();
+        let restore = self.player_panel_after_fullscreen();
         if let Some(was_fullscreen) = self.lyrics_fullscreen.take() {
+            self.finish_player_gesture(ctx);
+            self.player_panel_before_fullscreen = None;
+            self.set_player_panel_tab(restore);
+            if self.show_now_playing_panel {
+                self.request_now_playing_artist();
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(was_fullscreen));
             if self.lyrics_restore_maximized {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
@@ -12542,7 +12618,6 @@ impl App {
                 | Action::Forward
                 | Action::SignOut
                 | Action::ToggleWinampWindow
-                | Action::ToggleFriendsPanel
         ) {
             // ToggleQueuePanel is deliberately absent: in lyrics fullscreen
             // it flips the queue column instead of leaving the view.
@@ -13390,47 +13465,72 @@ impl App {
                 self.settings.sidebar_visible = !self.settings.sidebar_visible;
                 self.settings_dirty = true;
             }
-            Action::ToggleQueuePanel => {
-                self.show_queue_panel = !self.show_queue_panel;
-                if self.show_queue_panel {
-                    self.show_lyrics_panel = false;
-                    self.show_friends_panel = false;
-                    self.show_now_playing_panel = false;
-                    self.refresh_queue(true);
+            Action::SelectPlayerPanelTab(tab) => {
+                let fullscreen = self.lyrics_fullscreen.is_some();
+                let was_closed = !fullscreen && self.player_panel_tab().is_none();
+                if fullscreen {
+                    if std::mem::take(&mut self.skin_return) {
+                        self.milkdrop_backdrop = self.settings.lyrics_milkdrop;
+                        self.keep_skin = false;
+                    }
+                    self.leave_lyrics_fullscreen(ctx);
+                }
+                if fullscreen || self.player_panel_tab() != Some(tab) {
+                    if was_closed {
+                        self.finish_player_gesture(ctx);
+                    }
+                    self.select_player_panel_tab(tab, ctx);
                 }
             }
-            Action::ToggleLyricsPanel => {
+            Action::ClosePlayerPanel => {
                 self.leave_lyrics_fullscreen(ctx);
-                self.show_lyrics_panel = !self.show_lyrics_panel;
-                if self.show_lyrics_panel {
-                    self.show_queue_panel = false;
-                    self.show_friends_panel = false;
-                    self.show_now_playing_panel = false;
-                    self.lyrics_following = true;
-                    self.request_lyrics();
-                }
+                self.finish_player_gesture(ctx);
+                self.set_player_panel_tab(None);
             }
-            Action::ToggleFriendsPanel => {
-                self.show_friends_panel = !self.show_friends_panel;
-                if self.show_friends_panel {
-                    self.show_queue_panel = false;
-                    self.show_lyrics_panel = false;
-                    self.show_now_playing_panel = false;
-                    self.refresh_friends();
-                }
-            }
-            Action::ToggleNowPlayingPanel => {
-                self.show_now_playing_panel = !self.show_now_playing_panel;
-                if self.show_now_playing_panel {
-                    self.show_queue_panel = false;
-                    self.show_lyrics_panel = false;
-                    self.show_friends_panel = false;
+            Action::ToggleQueuePanel if self.lyrics_fullscreen.is_some() => {
+                self.show_queue_panel = !self.show_queue_panel;
+                self.show_lyrics_panel = !self.show_queue_panel;
+                if self.show_queue_panel {
                     self.refresh_queue(true);
-                    self.request_now_playing_artist();
+                }
+            }
+            Action::ToggleQueuePanel
+            | Action::ToggleLyricsPanel
+            | Action::ToggleFriendsPanel
+            | Action::ToggleNowPlayingPanel => {
+                let tab = match action {
+                    Action::ToggleQueuePanel => PlayerPanelTab::Queue,
+                    Action::ToggleLyricsPanel => PlayerPanelTab::Lyrics,
+                    Action::ToggleFriendsPanel => PlayerPanelTab::Friends,
+                    _ => PlayerPanelTab::NowPlaying,
+                };
+                let fullscreen = self.lyrics_fullscreen.is_some();
+                if fullscreen {
+                    // Activity asks for the main window, as it did before the
+                    // player sections shared a shell. Do not return to a skin.
+                    if matches!(action, Action::ToggleFriendsPanel)
+                        && std::mem::take(&mut self.skin_return)
+                    {
+                        self.milkdrop_backdrop = self.settings.lyrics_milkdrop;
+                        self.keep_skin = false;
+                    }
+                    self.leave_lyrics_fullscreen(ctx);
+                }
+                if !fullscreen && self.player_panel_tab() == Some(tab) {
+                    self.finish_player_gesture(ctx);
+                    self.set_player_panel_tab(None);
+                } else {
+                    if self.player_panel_tab().is_none() {
+                        self.finish_player_gesture(ctx);
+                    }
+                    self.select_player_panel_tab(tab, ctx);
                 }
             }
             Action::SetLyricsFullscreen(fullscreen) => {
                 if fullscreen && self.lyrics_fullscreen.is_none() {
+                    self.finish_player_gesture(ctx);
+                    self.player_panel_before_fullscreen =
+                        Some((self.player_panel_tab(), self.show_queue_panel));
                     self.lyrics_fullscreen =
                         Some(self.lyrics_fullscreen_restoring.take().unwrap_or_else(|| {
                             ctx.input(|input| input.viewport().fullscreen.unwrap_or(false))
@@ -15057,8 +15157,16 @@ impl App {
                 window_size: self.window_geometry.size,
                 window_pos: self.window_geometry.position,
                 window_maximized: self.window_geometry.maximized,
-                queue_open: Some(self.show_queue_panel),
-                now_playing_open: Some(self.show_now_playing_panel),
+                queue_open: Some(if self.lyrics_fullscreen.is_some() {
+                    self.player_panel_after_fullscreen() == Some(PlayerPanelTab::Queue)
+                } else {
+                    self.show_queue_panel
+                }),
+                now_playing_open: Some(if self.lyrics_fullscreen.is_some() {
+                    self.player_panel_after_fullscreen() == Some(PlayerPanelTab::NowPlaying)
+                } else {
+                    self.show_now_playing_panel
+                }),
                 queue_tab: Some(self.queue_tab.encode().to_string()),
                 winamp_pos: self.winamp.geometry.position,
                 milkdrop_pos: self.milkdrop_pos,
@@ -15869,7 +15977,7 @@ mod tests {
         }
         let least = crate::ui::topbar::least_width(&ctx);
         let sidebar = panel(&ctx, "sidebar");
-        let queue = panel(&ctx, "queue-panel");
+        let queue = panel(&ctx, crate::ui::player_panel::PANEL_ID);
         assert!(
             sidebar + queue + least <= 1000.5,
             "the page keeps {} of the {least} points its bar needs",
@@ -15891,7 +15999,7 @@ mod tests {
             draw(&ctx, &mut app, 1800.0);
         }
         assert_eq!(panel(&ctx, "sidebar"), 400.0);
-        assert_eq!(panel(&ctx, "queue-panel"), 500.0);
+        assert_eq!(panel(&ctx, crate::ui::player_panel::PANEL_ID), 500.0);
 
         // Closing the Queue gives the window its usual minimum back.
         app.show_queue_panel = false;
@@ -17145,14 +17253,19 @@ mod tests {
                     )),
                     ..Default::default()
                 },
-                |ui| crate::ui::queue::side_panel(app, ui),
+                |ui| {
+                    crate::ui::player_panel::show(app, ui);
+                },
             );
             output.textures_delta.clear();
         };
         let stored_width = |ctx: &egui::Context| {
-            egui::containers::panel::PanelState::load(ctx, egui::Id::new("queue-panel"))
-                .map(|state| state.outer_rect.width())
-                .unwrap_or(0.0)
+            egui::containers::panel::PanelState::load(
+                ctx,
+                egui::Id::new(crate::ui::player_panel::PANEL_ID),
+            )
+            .map(|state| state.outer_rect.width())
+            .unwrap_or(0.0)
         };
         panel(&mut app, &ctx);
         assert!(
@@ -24208,13 +24321,10 @@ mod tests {
                 assert!(shown_at.is_none(), "it stays once shown, gone at {width}");
             }
         }
-        assert!(button_at.is_some_and(|width| width > 760.0 && width <= 840.0));
+        assert!(button_at.is_some_and(|width| width > 840.0 && width <= 960.0));
+        assert!(now_playing_at == Some(760.0), "{now_playing_at:?}");
         assert!(
-            now_playing_at.is_some_and(|width| Some(width) > button_at && width <= 920.0),
-            "{now_playing_at:?}"
-        );
-        assert!(
-            shown_at.is_some_and(|width| Some(width) > now_playing_at && width <= 960.0),
+            shown_at.is_some_and(|width| Some(width) > button_at && width <= 1040.0),
             "{shown_at:?}"
         );
         app.backend.shutdown();
@@ -24260,10 +24370,13 @@ mod tests {
             );
             output.textures_delta.clear();
         }
-        let width = egui::containers::panel::PanelState::load(&ctx, egui::Id::new("friends-panel"))
-            .unwrap()
-            .size()
-            .x;
+        let width = egui::containers::panel::PanelState::load(
+            &ctx,
+            egui::Id::new(crate::ui::player_panel::PANEL_ID),
+        )
+        .unwrap()
+        .size()
+        .x;
         assert!(
             width <= crate::theme::SIDE_PANEL_MIN_WIDTH + 1.0,
             "the panel grew to {width}"
@@ -27607,7 +27720,10 @@ mod tests {
                 app.apply(Action::SetLyricsFullscreen(true), ui.ctx());
                 assert_eq!(app.lyrics_fullscreen, Some(was_fullscreen));
                 app.apply(Action::SetLyricsFullscreen(false), ui.ctx());
-                assert!(app.show_lyrics_panel);
+                assert!(
+                    app.player_panel_tab().is_none(),
+                    "a collapsed origin returns to the bar"
+                );
                 assert_eq!(app.lyrics_fullscreen, None);
             });
             output.textures_delta.clear();
@@ -27825,7 +27941,7 @@ mod tests {
     }
 
     #[test]
-    fn closing_lyrics_leaves_fullscreen() {
+    fn selecting_lyrics_leaves_fullscreen() {
         let mut app = headless_app();
         let ctx = egui::Context::default();
         let mut output = ctx.run_ui(Default::default(), |ui| {
@@ -27833,7 +27949,10 @@ mod tests {
             app.apply(Action::ToggleLyricsPanel, ui.ctx());
         });
         output.textures_delta.clear();
-        assert!(!app.show_lyrics_panel);
+        assert!(
+            app.show_lyrics_panel,
+            "L explicitly selects the lyrics section"
+        );
         assert_eq!(app.lyrics_fullscreen, None);
         assert!(
             output.viewport_output[&egui::ViewportId::ROOT]
@@ -32259,7 +32378,9 @@ mod tests {
                     events,
                     ..Default::default()
                 },
-                |ui| crate::ui::queue::side_panel(&mut app, ui),
+                |ui| {
+                    crate::ui::player_panel::show(&mut app, ui);
+                },
             );
             output.textures_delta.clear();
             app.apply_actions(&ctx);
@@ -36485,5 +36606,188 @@ mod tests {
         let server_err =
             widgets::sanitize_error_message("500 Internal Server Error", Locale::English);
         assert_eq!(server_err.as_ref(), "500 Internal Server Error");
+    }
+    #[test]
+    fn side_player_sections_are_idempotent_and_fullscreen_restores_the_origin() {
+        for origin in [
+            None,
+            Some(PlayerPanelTab::NowPlaying),
+            Some(PlayerPanelTab::Queue),
+            Some(PlayerPanelTab::Lyrics),
+            Some(PlayerPanelTab::Friends),
+        ] {
+            let mut app = test_app(&format!("side-player-origin-{origin:?}"));
+            let ctx = egui::Context::default();
+            app.set_player_panel_tab(origin);
+            if let Some(tab) = origin {
+                app.apply(Action::SelectPlayerPanelTab(tab), &ctx);
+                assert_eq!(
+                    app.player_panel_tab(),
+                    origin,
+                    "selection never closes the active section"
+                );
+            }
+            app.apply(Action::SetLyricsFullscreen(true), &ctx);
+            app.save_session();
+            app.flush_files();
+            let session = SessionState::load(&app.dirs.session_file());
+            assert_eq!(
+                session.now_playing_open,
+                Some(origin == Some(PlayerPanelTab::NowPlaying))
+            );
+            assert_eq!(
+                session.queue_open,
+                Some(origin == Some(PlayerPanelTab::Queue))
+            );
+            app.apply(Action::SetLyricsFullscreen(false), &ctx);
+            assert_eq!(app.player_panel_tab(), origin, "restore {origin:?}");
+            app.apply(Action::SetLyricsFullscreen(true), &ctx);
+            app.apply(Action::ToggleLyricsPanel, &ctx);
+            assert!(app.lyrics_fullscreen.is_none());
+            assert_eq!(
+                app.player_panel_tab(),
+                Some(PlayerPanelTab::Lyrics),
+                "L selects, never toggles a restored tab off"
+            );
+            app.apply(Action::SetLyricsFullscreen(true), &ctx);
+            app.apply(Action::ToggleFriendsPanel, &ctx);
+            assert!(app.lyrics_fullscreen.is_none());
+            assert_eq!(app.player_panel_tab(), Some(PlayerPanelTab::Friends));
+            app.backend.shutdown();
+        }
+    }
+
+    #[test]
+    fn side_player_restores_the_current_artist_after_a_fullscreen_track_change() {
+        use crate::api::models::ArtistRef;
+        use crate::player::LocalTrack;
+
+        for (origin, toggle_queue, restores_now_playing) in [
+            (Some(PlayerPanelTab::NowPlaying), false, true),
+            (Some(PlayerPanelTab::NowPlaying), true, false),
+            (Some(PlayerPanelTab::Friends), false, false),
+            (None, false, false),
+        ] {
+            let mut app = test_app(&format!("side-player-artist-{origin:?}-{toggle_queue}"));
+            app.backend.set_offline(true);
+            app.local_ready = true;
+            app.network_reachable = true;
+            app.local.playback = Playback::Playing;
+            let track = |id: &str| LocalTrack {
+                uri: format!("spotify:track:{id}"),
+                artists: vec![ArtistRef {
+                    id: Some(id.into()),
+                    name: id.into(),
+                    uri: None,
+                }],
+                ..Default::default()
+            };
+            app.local.track = Some(track("first"));
+            app.set_player_panel_tab(origin);
+            let ctx = egui::Context::default();
+            app.apply(Action::SetLyricsFullscreen(true), &ctx);
+            app.local.track = Some(track("second"));
+            app.on_now_playing_changed();
+            let artist = "spotify:artist:second";
+            assert!(
+                !app.play_count_reads.contains_key(artist),
+                "the artwork background does not request artist data while hidden"
+            );
+            if toggle_queue {
+                app.apply(Action::ToggleQueuePanel, &ctx);
+            }
+            app.apply(Action::SetLyricsFullscreen(false), &ctx);
+            assert_eq!(
+                app.show_now_playing_panel, restores_now_playing,
+                "the fullscreen queue still takes precedence"
+            );
+            assert_eq!(
+                app.play_count_reads.get(artist),
+                restores_now_playing.then_some(&PlayCountRead::Asked),
+                "only the restored Now playing section requests the current artist"
+            );
+            app.backend.shutdown();
+        }
+    }
+
+    #[test]
+    fn side_player_fullscreen_queue_changes_take_precedence() {
+        let ctx = egui::Context::default();
+        let mut app = test_app("side-player-fullscreen-queue");
+        for (origin, expected) in [
+            (None, Some(PlayerPanelTab::Queue)),
+            (
+                Some(PlayerPanelTab::NowPlaying),
+                Some(PlayerPanelTab::Queue),
+            ),
+            (Some(PlayerPanelTab::Queue), None),
+        ] {
+            app.set_player_panel_tab(origin);
+            app.apply(Action::SetLyricsFullscreen(true), &ctx);
+            app.apply(Action::ToggleQueuePanel, &ctx);
+            assert!(app.lyrics_fullscreen.is_some());
+            app.apply(Action::SetLyricsFullscreen(false), &ctx);
+            assert_eq!(app.player_panel_tab(), expected);
+        }
+        app.backend.shutdown();
+    }
+
+    #[test]
+    fn side_player_surface_changes_finish_volume_and_cancel_seek_gestures() {
+        let ctx = egui::Context::default();
+        let mut app = test_app("side-player-gesture-interruption");
+        for action in [
+            Action::SelectPlayerPanelTab(PlayerPanelTab::NowPlaying),
+            Action::ClosePlayerPanel,
+            Action::SetLyricsFullscreen(true),
+            Action::SetLyricsFullscreen(false),
+        ] {
+            app.seek_preview = Some(0.8);
+            app.volume_preview = Some(0.37);
+            let id = egui::Id::new("seek-slider");
+            ctx.data_mut(|data| data.insert_temp(id, 0.8_f32));
+            ctx.set_dragged_id(id);
+            app.apply(action, &ctx);
+            assert!(app.seek_preview.is_none());
+            assert!(app.volume_preview.is_none());
+            assert!(!ctx.is_being_dragged(id));
+            assert!(ctx.data(|data| data.get_temp::<f32>(id)).is_none());
+        }
+        app.backend.shutdown();
+    }
+    #[test]
+    fn side_player_selection_keeps_the_main_window_after_a_skin_trip() {
+        for action in [
+            Action::ToggleFriendsPanel,
+            Action::SelectPlayerPanelTab(PlayerPanelTab::Lyrics),
+        ] {
+            let ctx = egui::Context::default();
+            let mut app = test_app("side-player-skin-navigation");
+            app.apply(Action::SetLyricsFullscreen(true), &ctx);
+            app.skin_return = true;
+            app.actions.push(action);
+            app.apply_actions(&ctx);
+            assert!(!app.settings.winamp_window);
+            assert!(!app.skin_return);
+            assert!(app.player_panel_tab().is_some());
+            app.backend.shutdown();
+        }
+    }
+
+    #[test]
+    fn side_player_section_changes_close_song_menus_without_interrupting_transport() {
+        let ctx = egui::Context::default();
+        let mut app = test_app("side-player-popup-navigation");
+        app.set_player_panel_tab(Some(PlayerPanelTab::NowPlaying));
+        let popup = egui::Id::new(("side-player", "player-bar-liked-playlists"));
+        egui::Popup::open_id(&ctx, popup);
+        let slider = egui::Id::new(("side-player", "seek-slider"));
+        ctx.set_dragged_id(slider);
+        app.seek_preview = Some(0.3);
+        app.apply(Action::SelectPlayerPanelTab(PlayerPanelTab::Queue), &ctx);
+        assert!(!egui::Popup::is_id_open(&ctx, popup));
+        assert!(ctx.is_being_dragged(slider));
+        assert_eq!(app.seek_preview, Some(0.3));
+        app.backend.shutdown();
     }
 }

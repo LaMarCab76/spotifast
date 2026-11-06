@@ -38,6 +38,12 @@ cannot play music through Spotifast.
 
 ![Spotifast Home with the playlist library, recommendations, queue, and player visible](docs/screenshot.png)
 
+The collapsible side player keeps playback controls below its Now playing,
+Queue, Lyrics and Listening activity sections. Collapse it to use the bottom
+bar, or press `N` to open Now playing. It follows Spotifast's album tint and
+light or dark appearance. See [Using Spotifast](docs/_guide/using-spotifast.md#now-playing).
+
+
 <details>
 <summary><strong>Watch Spotifast in action</strong></summary>
 

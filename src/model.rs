@@ -105,6 +105,15 @@ fn episode_retained_bytes(episode: &Episode) -> usize {
         + image_retained_bytes(&episode.images)
 }
 
+/// The content above the persistent controls in the side player.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlayerPanelTab {
+    NowPlaying,
+    Queue,
+    Lyrics,
+    Friends,
+}
+
 /// Every screen the central panel can show.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Page {
@@ -1398,6 +1407,10 @@ pub enum Action {
     SetLibraryByYou(bool),
     /// The playing song, large, beside the page.
     ToggleNowPlayingPanel,
+    /// Select a section without toggling an already selected section closed.
+    SelectPlayerPanelTab(PlayerPanelTab),
+    /// Collapse the whole player panel to the bottom bar.
+    ClosePlayerPanel,
     /// Show or leave out podcasts and audiobooks wherever one browses.
     SetShowPodcasts(bool),
     SetLibrarySort {

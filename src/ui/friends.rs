@@ -18,76 +18,18 @@ const ROW_GAP: f32 = 18.0;
 const TITLE_INSET: i8 = 4;
 const CLOSE_GLYPH_INSET: i8 = 6;
 
-pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
-    let palette = app.palette;
-    let locale = app.locale;
-    let fit = super::yielding_panel(
-        ui.ctx(),
-        "friends-panel",
-        theme::SIDE_PANEL_MIN_WIDTH..=560.0,
-        app.settings.queue_width,
-        ui.available_width() - super::topbar::least_width(ui.ctx()),
+pub(crate) fn section(app: &mut App, ui: &mut egui::Ui) {
+    theme::text(
+        ui,
+        gettext(app.locale, "Listening activity"),
+        theme::bold(16.0),
+        app.palette.text,
     );
-    let panel = super::docked_panel("friends-panel", super::panels_on_left(app))
-        .resizable(true)
-        .default_size(app.settings.queue_width)
-        .size_range(fit.range.clone())
-        .show_separator_line(false)
-        .frame(
-            Frame::new()
-                .fill(palette.panel)
-                .inner_margin(Margin::symmetric(12, 12)),
-        );
-    let response = panel.show(ui, |ui| {
-        // The panel sits where the Queue would, under the same controls.
-        let window_controls =
-            super::window_controls_reservation(ui.ctx(), app, ui.available_width());
-        ui.add_space(
-            window_controls.queue_top
-                + super::left_corner_inset(ui.ctx(), app, super::Header::Queue),
-        );
-        let mut close = false;
-        egui::Sides::new().shrink_left().show(
-            ui,
-            |ui| {
-                ui.add_space(4.0);
-                theme::text(
-                    ui,
-                    gettext(locale, "Listening activity"),
-                    theme::bold(16.0),
-                    palette.text,
-                );
-            },
-            |ui| {
-                close = theme::icon_button(
-                    ui,
-                    Icon::X,
-                    18.0,
-                    palette.secondary,
-                    palette.text,
-                    &gettext(locale, "Close"),
-                )
-                .clicked();
-            },
-        );
-        if close {
-            app.actions.push(Action::ToggleFriendsPanel);
-        }
-        ui.add_space(12.0);
-        egui::ScrollArea::vertical()
-            .id_salt("friends-panel-scroll")
-            .auto_shrink([false, false])
-            .show(ui, |ui| contents(app, ui));
-    });
-    // The Listening activity panel shares the Queue panel's width, so switching
-    // between the two never moves the page.
-    let width = response.response.rect.width();
-    if (width - app.settings.queue_width).abs() > 1.0
-        && super::panel_width_chosen(ui.ctx(), "friends-panel", &fit)
-    {
-        app.settings.queue_width = width;
-        app.actions.push(Action::SettingsChanged);
-    }
+    ui.add_space(12.0);
+    egui::ScrollArea::vertical()
+        .id_salt("friends-panel-scroll")
+        .auto_shrink([false, false])
+        .show(ui, |ui| contents(app, ui));
 }
 
 fn contents(app: &mut App, ui: &mut egui::Ui) {

@@ -6,7 +6,7 @@ msgstr ""
 "Project-Id-Version: Spotifast\n"
 "Report-Msgid-Bugs-To: https://github.com/crmne/spotifast/issues/new?"
 "template=translation.yml\n"
-"POT-Creation-Date: 2026-11-06 12:09-0300\n"
+"POT-Creation-Date: 2026-11-06 12:44-0300\n"
 "PO-Revision-Date: 2026-09-23 20:00+0000\n"
 "Last-Translator: Spotifast contributors\n"
 "Language-Team: Russian\n"
@@ -29,12 +29,12 @@ msgstr "Приостановить {name}"
 msgid "Play {name}"
 msgstr "Воспроизвести {name}"
 
-#: src/ui/sidebar.rs:302 src/app.rs:4068 src/app.rs:26380
+#: src/ui/sidebar.rs:302 src/app.rs:4068 src/app.rs:26383
 #: src/ui/collection.rs:2326 src/ui/collection.rs:2555
 msgid "Playlist"
 msgstr "Плейлист"
 
-#: src/ui/sidebar.rs:312 src/ui/friends.rs:249 src/app.rs:4042 src/app.rs:26385
+#: src/ui/sidebar.rs:312 src/ui/friends.rs:249 src/app.rs:4042 src/app.rs:26388
 #: src/ui/collection.rs:2548 src/ui/home.rs:95 src/ui/keys.rs:383
 #: src/ui/winamp/playlist.rs:653
 msgid "Liked Songs"
@@ -264,7 +264,7 @@ msgid "Previous"
 msgstr "Предыдущий"
 
 #: src/ui/player_bar.rs:981 src/ui/lyrics.rs:475 src/ui/widgets.rs:2884
-#: src/ui/widgets.rs:2958 src/ui/widgets.rs:2986 src/app.rs:15353
+#: src/ui/widgets.rs:2958 src/ui/widgets.rs:2986 src/app.rs:15356
 #: src/ui/collection.rs:997
 msgid "Loading…"
 msgstr "Загрузка…"
@@ -690,7 +690,7 @@ msgstr "ПРОСЛУШИВАНИЯ"
 msgid "Sort by duration"
 msgstr "Сортировать по длительности"
 
-#: src/ui/widgets.rs:2997 src/app.rs:15562 src/app.rs:15576
+#: src/ui/widgets.rs:2997 src/app.rs:15565 src/app.rs:15579
 msgid "Network connection error. Check your connection."
 msgstr "Ошибка сетевого подключения. Проверьте соединение."
 
@@ -942,7 +942,7 @@ msgid "Queue cleared"
 msgstr "Очередь очищена"
 
 #. Translators: Keep {date} unchanged. It is a date in YYYY-MM-DD form.
-#: src/app.rs:7571 src/app.rs:26370
+#: src/app.rs:7571 src/app.rs:26373
 #, rust-format
 msgid "Queue {date}"
 msgstr "Очередь {date}"
@@ -1160,23 +1160,23 @@ msgstr[0] "Не удалось добавить {count} вставленную �
 msgstr[1] "Не удалось добавить {count} вставленные ссылки"
 msgstr[2] "Не удалось добавить {count} вставленных ссылок"
 
-#: src/app.rs:13246
+#: src/app.rs:13249
 msgid "Spotify doesn't let apps remove a playlist description, so it was kept"
 msgstr ""
 "Spotify не позволяет приложениям удалять описание плейлиста, поэтому оно "
 "сохранено"
 
-#: src/app.rs:13308 src/app.rs:13327
+#: src/app.rs:13311 src/app.rs:13330
 msgid "Link copied"
 msgstr "Ссылка скопирована"
 
 #. Translators: shown on the Copy button for a moment after it copied.
-#: src/app.rs:13314 src/ui/login.rs:553
+#: src/app.rs:13317 src/ui/login.rs:553
 msgid "Copied"
 msgstr "Скопировано"
 
 #. Translators: {count} is a number of song links, always more than one.
-#: src/app.rs:13331
+#: src/app.rs:13334
 #, rust-format
 msgid "{count} link copied"
 msgid_plural "{count} links copied"
@@ -1184,7 +1184,7 @@ msgstr[0] "Скопирована {count} ссылка"
 msgstr[1] "Скопировано {count} ссылки"
 msgstr[2] "Скопировано {count} ссылок"
 
-#: src/app.rs:13687
+#: src/app.rs:13690
 msgid ""
 "Spotify doesn't let apps reorder your playlists, so this order is saved on "
 "this computer"
@@ -1192,73 +1192,73 @@ msgstr ""
 "Spotify не позволяет приложениям менять порядок плейлистов, поэтому этот "
 "порядок сохранён на этом компьютере"
 
-#: src/app.rs:13870
+#: src/app.rs:13873
 msgid "Restarting local playback"
 msgstr "Перезапуск локального воспроизведения"
 
-#: src/app.rs:13906
+#: src/app.rs:13909
 msgid "Local playback needs Spotify Premium"
 msgstr "Для локального воспроизведения нужен Spotify Premium"
 
-#: src/app.rs:13958
+#: src/app.rs:13961
 msgid "Play history cleared"
 msgstr "История прослушивания очищена"
 
 #. Translators: {size} is a size in megabytes, such as 12.5.
-#: src/app.rs:13977
+#: src/app.rs:13980
 #, rust-format
 msgid "Cleared {size} MB of artwork"
 msgstr "Удалено {size} МБ обложек"
 
 #. Translators: {error} is an error message.
-#: src/app.rs:13983
+#: src/app.rs:13986
 #, rust-format
 msgid "Couldn't clear artwork: {error}"
 msgstr "Не удалось удалить обложки: {error}"
 
 #. Translators: {name} is the name of a visualizer preset pack.
-#: src/app.rs:14296
+#: src/app.rs:14299
 #, rust-format
 msgid "Downloading {name} presets"
 msgstr "Загрузка пресетов {name}"
 
-#: src/app.rs:15496
+#: src/app.rs:15499
 msgid "Couldn't start playback"
 msgstr "Не удалось начать воспроизведение"
 
-#: src/app.rs:15497
+#: src/app.rs:15500
 msgid "Couldn't pause"
 msgstr "Не удалось поставить на паузу"
 
-#: src/app.rs:15498
+#: src/app.rs:15501
 msgid "Couldn't skip"
 msgstr "Не удалось переключить трек"
 
-#: src/app.rs:15499
+#: src/app.rs:15502
 msgid "Couldn't go back"
 msgstr "Не удалось вернуться назад"
 
-#: src/app.rs:15500
+#: src/app.rs:15503
 msgid "Couldn't seek"
 msgstr "Не удалось перемотать"
 
-#: src/app.rs:15501
+#: src/app.rs:15504
 msgid "Couldn't change the volume"
 msgstr "Не удалось изменить громкость"
 
-#: src/app.rs:15502
+#: src/app.rs:15505
 msgid "Couldn't change shuffle"
 msgstr "Не удалось изменить режим перемешивания"
 
-#: src/app.rs:15503
+#: src/app.rs:15506
 msgid "Couldn't change repeat"
 msgstr "Не удалось изменить режим повтора"
 
-#: src/app.rs:15546 src/ui/mod.rs:453
+#: src/app.rs:15549 src/ui/mod.rs:453
 msgid "Spotify won't let this computer play this song right now."
 msgstr "Spotify сейчас не даёт этому компьютеру воспроизвести эту песню."
 
-#: src/app.rs:15553
+#: src/app.rs:15556
 msgid ""
 "No audio output device was found. Connect or enable one, then press play "
 "again."
@@ -1266,16 +1266,16 @@ msgstr ""
 "Устройство вывода звука не найдено. Подключи или включи его, затем снова "
 "нажми «Воспроизвести»."
 
-#: src/app.rs:15567
+#: src/app.rs:15570
 msgid ""
 "Spotify doesn't make this playlist's songs available to third-party apps."
 msgstr "Spotify не открывает треки этого плейлиста сторонним приложениям."
 
-#: src/app.rs:15698
+#: src/app.rs:15701
 msgid "Spotify sign-in expired. Sign in again, then retry the cover upload."
 msgstr "Срок входа в Spotify истёк. Войди снова и повтори загрузку обложки."
 
-#: src/app.rs:15703
+#: src/app.rs:15706
 msgid ""
 "Spotify refused this cover. Check that you own the playlist, then sign in "
 "again to grant image upload permission. If you use your own Client ID, "
@@ -1285,20 +1285,20 @@ msgstr ""
 "войди снова, чтобы разрешить загрузку изображений. Если используешь свой "
 "Client ID, авторизуй его заново и в настройках."
 
-#: src/app.rs:15707
+#: src/app.rs:15710
 msgid "Spotify rejected the image size. Choose a smaller image."
 msgstr ""
 "Spotify отклонил изображение из-за размера. Выбери изображение поменьше."
 
 #. Translators: {error} is an error message.
-#: src/app.rs:15710
+#: src/app.rs:15713
 #, rust-format
 msgid "Couldn't upload the cover: {error}. Try again."
 msgstr "Не удалось загрузить обложку: {error}. Попробуй ещё раз."
 
 #. Translators: Keep {track} unchanged. It is the name of the song,
 #. playlist, album, or artist the radio is based on, not translated.
-#: src/app.rs:26390 src/app/radio.rs:38
+#: src/app.rs:26393 src/app/radio.rs:38
 #, rust-format
 msgid "{track} Radio"
 msgstr "Радио по треку «{track}»"

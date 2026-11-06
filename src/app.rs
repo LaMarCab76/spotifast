@@ -12538,6 +12538,9 @@ impl App {
             self.finish_player_gesture(ctx);
             self.player_panel_before_fullscreen = None;
             self.set_player_panel_tab(restore);
+            if self.show_now_playing_panel {
+                self.request_now_playing_artist();
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(was_fullscreen));
             if self.lyrics_restore_maximized {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
@@ -36650,6 +36653,59 @@ mod tests {
             app.apply(Action::ToggleFriendsPanel, &ctx);
             assert!(app.lyrics_fullscreen.is_none());
             assert_eq!(app.player_panel_tab(), Some(PlayerPanelTab::Friends));
+            app.backend.shutdown();
+        }
+    }
+
+    #[test]
+    fn side_player_restores_the_current_artist_after_a_fullscreen_track_change() {
+        use crate::api::models::ArtistRef;
+        use crate::player::LocalTrack;
+
+        for (origin, toggle_queue, restores_now_playing) in [
+            (Some(PlayerPanelTab::NowPlaying), false, true),
+            (Some(PlayerPanelTab::NowPlaying), true, false),
+            (Some(PlayerPanelTab::Friends), false, false),
+            (None, false, false),
+        ] {
+            let mut app = test_app(&format!("side-player-artist-{origin:?}-{toggle_queue}"));
+            app.backend.set_offline(true);
+            app.local_ready = true;
+            app.network_reachable = true;
+            app.local.playback = Playback::Playing;
+            let track = |id: &str| LocalTrack {
+                uri: format!("spotify:track:{id}"),
+                artists: vec![ArtistRef {
+                    id: Some(id.into()),
+                    name: id.into(),
+                    uri: None,
+                }],
+                ..Default::default()
+            };
+            app.local.track = Some(track("first"));
+            app.set_player_panel_tab(origin);
+            let ctx = egui::Context::default();
+            app.apply(Action::SetLyricsFullscreen(true), &ctx);
+            app.local.track = Some(track("second"));
+            app.on_now_playing_changed();
+            let artist = "spotify:artist:second";
+            assert!(
+                !app.play_count_reads.contains_key(artist),
+                "the artwork background does not request artist data while hidden"
+            );
+            if toggle_queue {
+                app.apply(Action::ToggleQueuePanel, &ctx);
+            }
+            app.apply(Action::SetLyricsFullscreen(false), &ctx);
+            assert_eq!(
+                app.show_now_playing_panel, restores_now_playing,
+                "the fullscreen queue still takes precedence"
+            );
+            assert_eq!(
+                app.play_count_reads.get(artist),
+                restores_now_playing.then_some(&PlayCountRead::Asked),
+                "only the restored Now playing section requests the current artist"
+            );
             app.backend.shutdown();
         }
     }
